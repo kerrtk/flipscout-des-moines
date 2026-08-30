@@ -1,0 +1,39 @@
+# Lint/format configuration for the FlipScout backend.
+line-length = 90
+target-version = "py311"
+
+[lint]
+select = [
+    "F",     # pyflakes
+    "E", "W",# pycodestyle
+    "I",     # import sorting
+    "UP",    # pyupgrade
+    "B",     # bugbear
+    "C4",    # comprehensions
+    "SIM",   # simplify
+    "RUF",   # ruff-specific
+    "S",     # bandit (security)
+    # pylint: errors/warnings/conventions only. PLR* (magic-value, arg
+    # counts, return counts) is deliberately excluded - literal HTTP status
+    # codes and wide keyword-only signatures are clearer here, not worse.
+    "PLE", "PLW", "PLC",
+    "PYI",   # stub/typing conventions
+    "SLF",   # private member access
+]
+ignore = [
+    # Money is written as Decimal("12.34") throughout, deliberately. Rewriting
+    # integer cases to Decimal(12) would make the codebase inconsistent about
+    # the one habit that keeps float error out of prices.
+    "FURB157",
+    # Long prose in docstrings and error messages is intentional.
+    "E501",
+]
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "S101",   # asserts are the point of a test
+    "S105",   # "hardcoded password" == obviously fake test fixtures
+    "S106",
+    "S107",
+    "SLF001", # tests deliberately inspect the private token cache
+]
