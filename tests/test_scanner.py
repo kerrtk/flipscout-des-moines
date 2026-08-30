@@ -482,3 +482,198 @@ def test_report_handles_an_empty_scan(tmp_path: Path) -> None:
     with Storage(tmp_path / "s.db") as storage:
         report = format_report(scan(make_client(handler), watchlist, storage))
     assert "No candidates" in report
+
+
+# --------------------------------------------------------------------------- #
+# Pickup tiers - when TIME, not distance, is the binding constraint
+# --------------------------------------------------------------------------- #
+
+from app.services.geo import Base  # noqa: E402
+from app.services.scanner import classify_pickup  # noqa: E402
+from app.services.watchlist import Availability, PickupWindow  # noqa: E402
+
+HOME = Base(name="home", postal_code="50309", lat=41.5868, lon=-93.6250)
+WORK = Base(name="work", lat=41.6000, lon=-93.7000)
+
+
+def test_pickup_budget_is_round_trip_not_one_way() -> None:
+    """45 minutes at 35mph is ~26 round-trip miles, so ~13 miles each way."""
+    availability = Availability(max_pickup_minutes=45, average_speed_mph=35)
+    assert availability.max_round_trip_miles() == pytest.approx(26.25)
+    assert availability.max_one_way_miles() == pytest.approx(13.125)
+
+
+def test_item_inside_the_budget_is_a_quick_grab() -> None:
+    listing = normalize_ebay_item(make_item("a", "10", 41.60, -93.65))
+    tier, base, miles = classify_pickup(
+        listing,
+        bases=[HOME, WORK],
+        availability=Availability(),
+        on_planned_route=False,
+    )
+    assert tier == "quick"
+    assert base in {"home", "work"}
+    assert miles is not None and miles < 14
+
+
+def test_item_outside_the_budget_but_on_route_is_on_route() -> None:
+    listing = normalize_ebay_item(make_item("b", "10", 42.0653, -94.8669))
+    tier, _base, _miles = classify_pickup(
+        listing,
+        bases=[HOME],
+        availability=Availability(),
+        on_planned_route=True,
+    )
+    assert tier == "on_route"
+
+
+def test_item_that_is_neither_needs_a_special_trip() -> None:
+    listing = normalize_ebay_item(make_item("c", "10", 41.9779, -91.6656))
+    tier, _base, miles = classify_pickup(
+        listing,
+        bases=[HOME],
+        availability=Availability(),
+        on_planned_route=False,
+    )
+    assert tier == "special_trip"
+    assert miles is not None and miles > 100
+
+
+def test_a_tighter_schedule_shrinks_what_counts_as_quick() -> None:
+    """Someone with 20 spare minutes cannot reach what a 90-minute budget can."""
+    listing = normalize_ebay_item(make_item("d", "10", 41.75, -93.62))
+    generous = Availability(max_pickup_minutes=90, average_speed_mph=40)
+    tight = Availability(max_pickup_minutes=20, average_speed_mph=30)
+
+    assert (
+        classify_pickup(
+            listing, bases=[HOME], availability=generous, on_planned_route=False
+        )[0]
+        == "quick"
+    )
+    assert (
+        classify_pickup(
+            listing, bases=[HOME], availability=tight, on_planned_route=False
+        )[0]
+        == "special_trip"
+    )
+
+
+def test_no_bases_configured_falls_back_to_route_logic() -> None:
+    listing = normalize_ebay_item(make_item("e", "10", 41.60, -93.65))
+    tier, base, miles = classify_pickup(
+        listing,
+        bases=[],
+        availability=Availability(),
+        on_planned_route=True,
+    )
+    assert tier == "on_route"
+    assert base is None and miles is None
+
+
+def test_listing_without_coordinates_is_not_called_quick() -> None:
+    """Never promise a quick grab for something we cannot locate."""
+    listing = normalize_ebay_item(make_item("f", "10", None, None))
+    tier, _base, _miles = classify_pickup(
+        listing,
+        bases=[HOME],
+        availability=Availability(),
+        on_planned_route=False,
+    )
+    assert tier == "special_trip"
+
+
+def test_window_end_must_follow_start() -> None:
+    with pytest.raises(ValueError, match="end must be after start"):
+        PickupWindow(day="sat", start="13:00", end="09:00")
+
+
+@pytest.mark.parametrize("day", ["funday", "Monday", ""])
+def test_invalid_day_is_rejected(day) -> None:
+    with pytest.raises(ValueError):
+        PickupWindow(day=day, start="09:00", end="10:00")
+
+
+def test_weekly_minutes_sums_every_window() -> None:
+    availability = Availability(
+        windows=[
+            PickupWindow(day="sat", start="09:00", end="13:00"),  # 240
+            PickupWindow(day="wed", start="17:30", end="20:00"),  # 150
+        ]
+    )
+    assert availability.weekly_minutes() == 390
+
+
+def test_quick_grabs_outrank_better_far_away_finds(tmp_path: Path) -> None:
+    """The core of the time constraint: reachable beats theoretically better."""
+    near = make_item("v1|near|0", "200", 41.60, -93.65)  # ~2mi from home
+    far = make_item("v1|far|0", "60", 42.0653, -94.8669)  # on route, cheaper
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return token_response()
+        return httpx.Response(200, json={"itemSummaries": [far, near]})
+
+    watchlist = Watchlist(
+        routes=[CORRIDOR],
+        bases=[HOME],
+        availability=Availability(max_pickup_minutes=45),
+        searches=[base_search()],
+    )
+    with Storage(tmp_path / "s.db") as storage:
+        result = scan(make_client(handler), watchlist, storage)
+
+    assert result.candidates[0].pickup_tier == "quick"
+    assert result.candidates[0].listing.source_item_id == "v1|near|0"
+
+
+def test_report_groups_by_how_you_would_collect_it(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return token_response()
+        return httpx.Response(
+            200,
+            json={
+                "itemSummaries": [
+                    make_item("v1|near|0", "100", 41.60, -93.65),
+                    make_item("v1|route|0", "100", 42.0653, -94.8669),
+                ]
+            },
+        )
+
+    watchlist = Watchlist(
+        routes=[CORRIDOR],
+        bases=[HOME],
+        availability=Availability(max_pickup_minutes=45),
+        searches=[base_search()],
+    )
+    with Storage(tmp_path / "s.db") as storage:
+        report = format_report(scan(make_client(handler), watchlist, storage))
+
+    assert "QUICK GRABS" in report
+    assert "ON ROUTE" in report
+    assert report.index("QUICK GRABS") < report.index("ON ROUTE")
+
+
+def test_quick_grab_does_not_also_claim_to_be_on_a_route(tmp_path: Path) -> None:
+    """A quick errand from home is not "a trip you already make" - pick one."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return token_response()
+        return httpx.Response(
+            200, json={"itemSummaries": [make_item("v1|n|0", "100", 41.60, -93.65)]}
+        )
+
+    watchlist = Watchlist(
+        routes=[CORRIDOR],
+        bases=[HOME],
+        availability=Availability(max_pickup_minutes=45),
+        searches=[base_search()],
+    )
+    with Storage(tmp_path / "s.db") as storage:
+        result = scan(make_client(handler), watchlist, storage)
+
+    reasons = result.candidates[0].reasons
+    assert any("quick grab from home" in r for r in reasons)
+    assert "on a trip you already make" not in reasons

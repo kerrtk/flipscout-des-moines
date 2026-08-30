@@ -143,3 +143,36 @@ def filter_on_route(
 ) -> list[tuple[float, float]]:
     """Keep only points within the route's detour tolerance."""
     return [point for point in items if route.is_on_route(point)]
+
+
+class Base(BaseModel):
+    """A place you actually are during the week - home, work, a job site.
+
+    Distinct from a Route waypoint: a base is a *start point* for a short
+    round trip squeezed into a lunch break or an evening, not a stop on a
+    drive you were already making.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    postal_code: str | None = None
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+    @property
+    def point(self) -> tuple[float, float]:
+        return (self.lat, self.lon)
+
+    def miles_to(self, point: tuple[float, float]) -> float:
+        return haversine_miles(self.point, point)
+
+
+def nearest_base(
+    point: tuple[float, float], bases: Sequence[Base]
+) -> tuple[Base | None, float | None]:
+    """The base closest to ``point``, and how far away it is."""
+    if not bases:
+        return (None, None)
+    best = min(bases, key=lambda base: base.miles_to(point))
+    return (best, best.miles_to(point))

@@ -5,6 +5,30 @@
 # Coordinates are approximate city centers, which is plenty: they are used
 # for "how far off my route is this", where a few hundred metres is noise.
 
+# ---------------------------------------------------------------------------
+# WHERE YOU ACTUALLY ARE during the week. A "quick grab" is measured from
+# these, not from a route - it is a short round trip squeezed into time you
+# already have, not a drive you are already making.
+# ---------------------------------------------------------------------------
+bases:
+  - { name: "home", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+  # Replace with your actual work location - this drives the whole quick tier.
+  - { name: "work", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+
+# ---------------------------------------------------------------------------
+# WHEN you can collect, and how far you will realistically go on a work day.
+#
+# max_pickup_minutes is ROUND TRIP. 45 minutes at 35 mph averages out to
+# roughly 13 miles each way - less in town. Setting this honestly is what
+# stops the scanner surfacing things you will never actually go get.
+# ---------------------------------------------------------------------------
+availability:
+  max_pickup_minutes: 45
+  average_speed_mph: 35
+  windows:
+    - { day: "wed", start: "17:30", end: "20:00" }
+    - { day: "sat", start: "09:00", end: "13:00" }
+
 routes:
   # ---------------------------------------------------------------------
   # The every-two-weeks Sioux City run, two ways. Keep the one you drive

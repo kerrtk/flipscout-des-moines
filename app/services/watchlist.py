@@ -15,7 +15,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models import EbayItemCondition
-from app.services.geo import Route
+from app.services.geo import Base, Route
 
 DEFAULT_WATCHLIST_PATH = Path("watchlist.yaml")
 
@@ -58,12 +58,64 @@ class SavedSearch(BaseModel):
     notes: str | None = None
 
 
+class PickupWindow(BaseModel):
+    """A recurring block of time you can actually collect something in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day: str = Field(pattern="^(mon|tue|wed|thu|fri|sat|sun)$")
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+    @model_validator(mode="after")
+    def _end_after_start(self) -> PickupWindow:
+        if self.end <= self.start:
+            raise ValueError(
+                f"window {self.day} {self.start}-{self.end}: end must be after start"
+            )
+        return self
+
+    def minutes_long(self) -> int:
+        def to_minutes(value: str) -> int:
+            hours, minutes = value.split(":")
+            return int(hours) * 60 + int(minutes)
+
+        return to_minutes(self.end) - to_minutes(self.start)
+
+
+class Availability(BaseModel):
+    """When you can collect, and how far you will go on a work night.
+
+    ``max_pickup_minutes`` is ROUND-TRIP driving time, not one way. A 45
+    minute budget is a ~22 minute drive each way - which at highway speed is
+    roughly 20 miles, and much less in town. Being honest about this is what
+    stops the scanner surfacing things you will never actually go get.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_pickup_minutes: int = Field(default=45, gt=0, le=600)
+    average_speed_mph: float = Field(default=35.0, gt=0, le=90)
+    windows: list[PickupWindow] = Field(default_factory=list)
+
+    def max_round_trip_miles(self) -> float:
+        return (self.max_pickup_minutes / 60.0) * self.average_speed_mph
+
+    def max_one_way_miles(self) -> float:
+        return self.max_round_trip_miles() / 2
+
+    def weekly_minutes(self) -> int:
+        return sum(window.minutes_long() for window in self.windows)
+
+
 class Watchlist(BaseModel):
     """The whole config: routes plus the searches that reference them."""
 
     model_config = ConfigDict(extra="forbid")
 
     routes: list[Route] = Field(default_factory=list)
+    bases: list[Base] = Field(default_factory=list)
+    availability: Availability = Field(default_factory=Availability)
     searches: list[SavedSearch] = Field(default_factory=list)
 
     @model_validator(mode="after")

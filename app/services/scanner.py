@@ -21,10 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import NormalizedListing, ProfitAssumptions, ProfitEstimate
 from app.services.ebay_client import EbayClient, EbayError, InvalidSearchRequest
-from app.services.geo import Route, Waypoint
+from app.services.geo import Base, Route, Waypoint, nearest_base
 from app.services.normalization import normalize_ebay_search_response
 from app.services.profitability import estimate_profit
-from app.services.watchlist import SavedSearch, Watchlist
+from app.services.watchlist import Availability, SavedSearch, Watchlist
 from app.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,11 @@ class Candidate(BaseModel):
     estimate: ProfitEstimate | None = None
     score: Decimal = Decimal("0")
     reasons: list[str] = Field(default_factory=list)
+
+    #: How you would actually collect this. See ``classify_pickup``.
+    pickup_tier: str = "special_trip"
+    base_name: str | None = None
+    base_miles: float | None = None
 
 
 @dataclass
@@ -113,6 +118,51 @@ def locate(
     if best_route is None:
         return (None, None, None)
     return (best_route, best_route.nearest_waypoint(point), best_detour)
+
+
+#: Ordering for the report. A thing you can grab on a lunch break outranks a
+#: better thing that needs a Saturday, because the Saturday one competes with
+#: everything else you could do with a Saturday.
+PICKUP_TIER_RANK = {"quick": 0, "on_route": 1, "special_trip": 2}
+
+
+def classify_pickup(
+    listing: NormalizedListing,
+    *,
+    bases: list[Base],
+    availability: Availability,
+    on_planned_route: bool,
+) -> tuple[str, str | None, float | None]:
+    """Decide how a find would actually be collected.
+
+    Returns ``(tier, base_name, miles_from_base)``.
+
+    - ``quick``        - inside the round-trip budget from a base you already
+                         sit at during the week. Grabbable on a lunch break.
+    - ``on_route``     - a detour on a drive you already make.
+    - ``special_trip`` - neither. It has to be worth burning a Saturday.
+
+    The distinction matters when time, not distance, is the binding
+    constraint: an hour you do not have is infinitely expensive.
+    """
+    point = _listing_point(listing)
+    base, miles = (None, None)
+    if point is not None:
+        base, miles = nearest_base(point, bases)
+
+    if miles is not None and miles <= availability.max_one_way_miles():
+        return ("quick", base.name if base else None, round(miles, 1))
+    if on_planned_route:
+        return (
+            "on_route",
+            base.name if base else None,
+            round(miles, 1) if miles is not None else None,
+        )
+    return (
+        "special_trip",
+        base.name if base else None,
+        round(miles, 1) if miles is not None else None,
+    )
 
 
 def score_candidate(
@@ -253,15 +303,32 @@ def scan(
                     and detour is not None
                     and detour <= route.max_detour_miles
                 )
+                tier, base_name, base_miles = classify_pickup(
+                    listing,
+                    bases=watchlist.bases,
+                    availability=watchlist.availability,
+                    on_planned_route=on_route,
+                )
+                # A quick grab from a base is charged as an on-route errand:
+                # it fits in time you are already spending near that base.
                 estimate, score, drive_cost, reasons = score_candidate(
                     listing,
                     search,
-                    detour_miles=detour,
+                    detour_miles=(
+                        base_miles
+                        if tier == "quick" and base_miles is not None
+                        else detour
+                    ),
                     economics=economics,
-                    on_planned_route=on_route,
+                    on_planned_route=on_route or tier == "quick",
                 )
                 if score <= 0:
                     continue
+                if tier == "quick":
+                    # Replace the route wording: a quick grab is an errand from
+                    # a base, not a detour on a trip already being made.
+                    reasons = [r for r in reasons if r != "on a trip you already make"]
+                    reasons.insert(0, f"quick grab from {base_name}")
 
                 result.candidates.append(
                     Candidate(
@@ -281,12 +348,19 @@ def scan(
                         estimate=estimate,
                         score=score,
                         reasons=reasons,
+                        pickup_tier=tier,
+                        base_name=base_name,
+                        base_miles=base_miles,
                     )
                 )
 
         result.searches_run += 1
 
-    result.candidates.sort(key=lambda c: c.score, reverse=True)
+    # Tier first, then score: the best thing you cannot go get is worth less
+    # than a decent thing you can.
+    result.candidates.sort(
+        key=lambda c: (PICKUP_TIER_RANK.get(c.pickup_tier, 9), -c.score)
+    )
     return result
 
 
@@ -302,8 +376,20 @@ def format_report(result: ScanResult, *, top: int = 20) -> str:
 
     if not result.candidates:
         lines.append("No candidates cleared their thresholds.")
+
+    headings = {
+        "quick": "QUICK GRABS - reachable in your pickup window",
+        "on_route": "ON ROUTE - collect on a drive you already make",
+        "special_trip": "WORTH A SPECIAL TRIP - only if the margin justifies a day",
+    }
+    current_tier: str | None = None
+
     for index, candidate in enumerate(result.candidates[:top], start=1):
         listing = candidate.listing
+        if candidate.pickup_tier != current_tier:
+            current_tier = candidate.pickup_tier
+            lines.append(headings.get(current_tier, current_tier).upper())
+            lines.append("-" * 62)
         lines.append(f"{index}. {listing.title or '(untitled)'}")
         lines.append(
             f"   ask ${listing.price_value}  "
@@ -312,12 +398,13 @@ def format_report(result: ScanResult, *, top: int = 20) -> str:
             f"score {candidate.score}/mi"
         )
         where = candidate.nearest_stop or listing.location_text or "location unknown"
-        detour = (
-            f"{candidate.detour_miles}mi off {candidate.route_name}"
-            if candidate.detour_miles is not None
-            else "off-route distance unknown"
-        )
-        lines.append(f"   {where} - {detour} - drive ${candidate.drive_cost or 0}")
+        if candidate.pickup_tier == "quick" and candidate.base_miles is not None:
+            placement = f"{candidate.base_miles}mi from {candidate.base_name}"
+        elif candidate.detour_miles is not None:
+            placement = f"{candidate.detour_miles}mi off {candidate.route_name}"
+        else:
+            placement = "off-route distance unknown"
+        lines.append(f"   {where} - {placement} - drive ${candidate.drive_cost or 0}")
         if candidate.reasons:
             lines.append(f"   {'; '.join(candidate.reasons)}")
         if listing.url:

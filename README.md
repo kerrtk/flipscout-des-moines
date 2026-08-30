@@ -159,6 +159,50 @@ taken within minutes by continuous scanners. What it does catch is local-pickup
 inventory, which moves far slower because the buyer pool is small. That is the
 niche this tool is built for.
 
+### When time, not distance, is the constraint
+
+If you have a job, the binding limit is not how far something is — it is
+whether you can get there before it sells. Every candidate is classified by
+**how you would actually collect it**, and the report is grouped and sorted by
+that before score:
+
+| Tier | Meaning |
+| --- | --- |
+| `quick` | Inside your round-trip budget from a base you already sit at |
+| `on_route` | A detour on a drive you already make |
+| `special_trip` | Neither — has to justify burning a Saturday |
+
+```yaml
+bases:
+  - { name: "home", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+  - { name: "work", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+
+availability:
+  max_pickup_minutes: 45      # ROUND TRIP, not one way
+  average_speed_mph: 35
+  windows:
+    - { day: "wed", start: "17:30", end: "20:00" }
+    - { day: "sat", start: "09:00", end: "13:00" }
+```
+
+`max_pickup_minutes` is round trip: 45 minutes at 35 mph is roughly 13 miles
+each way, less in town. Set it honestly — an inflated budget just fills the
+report with things you will never go get, and a report you stop trusting is a
+report you stop reading.
+
+A decent find you can grab on a lunch break outranks a better one that needs a
+day you do not have.
+
+### Regulated categories
+
+High-multiple finds cluster in categories with compliance friction — medical
+devices especially — precisely because that friction deters casual flippers.
+That is an edge once you learn the rules and a liability if you do not. Before
+listing anything medical, verify: whether the device is prescription-only,
+what the marketplace's medical-device policy allows, and whether skin-contact
+consumables need replacing. The tool scores margin; it does not know what you
+are allowed to sell.
+
 ### Still the same caveat
 
 Every price in the report is an **asking price**, and every resale figure comes
