@@ -1,0 +1,166 @@
+# FlipScout watchlist - routes you drive and searches you run.
+#
+# Copy to watchlist.yaml and edit. The scanner reads watchlist.yaml.
+#
+# Coordinates are approximate city centers, which is plenty: they are used
+# for "how far off my route is this", where a few hundred metres is noise.
+
+routes:
+  # ---------------------------------------------------------------------
+  # The every-two-weeks Sioux City run, two ways. Keep the one you drive
+  # and delete the other, or keep both - a search scoped to no route uses
+  # all of them.
+  # ---------------------------------------------------------------------
+
+  # Northern option: I-35 up to US-20 west, through Fort Dodge.
+  - name: sioux-city-us20
+    max_detour_miles: 35
+    cadence_days: 14
+    notes: "I-35 N to US-20 W. Four-lane most of the way, easiest with a truck."
+    waypoints:
+      - { name: "Des Moines",  postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+      - { name: "Ames",        postal_code: "50010", lat: 42.0308, lon: -93.6319 }
+      - { name: "Webster City",postal_code: "50595", lat: 42.4691, lon: -93.8155 }
+      - { name: "Fort Dodge",  postal_code: "50501", lat: 42.4975, lon: -94.1680 }
+      - { name: "Sac City",    postal_code: "50583", lat: 42.4222, lon: -94.9902 }
+      - { name: "Storm Lake",  postal_code: "50588", lat: 42.6414, lon: -95.2097 }
+      - { name: "Sioux City",  postal_code: "51101", lat: 42.4963, lon: -96.4049 }
+
+  # Diagonal option: IA-141 / US-30 through Carroll and Denison.
+  - name: sioux-city-us30
+    max_detour_miles: 35
+    cadence_days: 14
+    notes: "IA-141 NW to US-30 W. Shorter on the map, more small towns."
+    waypoints:
+      - { name: "Des Moines", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+      - { name: "Perry",      postal_code: "50220", lat: 41.8400, lon: -94.1069 }
+      - { name: "Jefferson",  postal_code: "50129", lat: 42.0153, lon: -94.3775 }
+      - { name: "Carroll",    postal_code: "51401", lat: 42.0653, lon: -94.8669 }
+      - { name: "Denison",    postal_code: "51442", lat: 42.0189, lon: -95.3553 }
+      - { name: "Mapleton",   postal_code: "51034", lat: 42.1655, lon: -95.7936 }
+      - { name: "Sioux City", postal_code: "51101", lat: 42.4963, lon: -96.4049 }
+
+  # ---------------------------------------------------------------------
+  # Statewide net. Not a drive you make - a coarse filter for anything in
+  # Iowa worth a special trip. Give it a tighter min_multiple in searches.
+  # ---------------------------------------------------------------------
+  - name: iowa-statewide
+    max_detour_miles: 45
+    notes: "All Iowa metros. Use for high-value finds worth a dedicated run."
+    waypoints:
+      - { name: "Sioux City",     postal_code: "51101", lat: 42.4963, lon: -96.4049 }
+      - { name: "Council Bluffs", postal_code: "51501", lat: 41.2619, lon: -95.8608 }
+      - { name: "Des Moines",     postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+      - { name: "Mason City",     postal_code: "50401", lat: 43.1536, lon: -93.2010 }
+      - { name: "Waterloo",       postal_code: "50701", lat: 42.4928, lon: -92.3426 }
+      - { name: "Cedar Rapids",   postal_code: "52401", lat: 41.9779, lon: -91.6656 }
+      - { name: "Iowa City",      postal_code: "52240", lat: 41.6611, lon: -91.5302 }
+      - { name: "Davenport",      postal_code: "52801", lat: 41.5236, lon: -90.5776 }
+      - { name: "Dubuque",        postal_code: "52001", lat: 42.5006, lon: -90.6646 }
+
+  # ---------------------------------------------------------------------
+  # Sioux City sits in a tri-state corner. Once you are already there,
+  # Sioux Falls and Omaha are day-trip close and are far bigger markets
+  # than anything between them.
+  # ---------------------------------------------------------------------
+  - name: sioux-city-metros
+    max_detour_miles: 30
+    notes: "Reachable once parked in Sioux City. Sioux Falls ~90min N, Omaha ~90min S."
+    waypoints:
+      - { name: "Sioux Falls SD", postal_code: "57104", lat: 43.5460, lon: -96.7313 }
+      - { name: "Le Mars",        postal_code: "51031", lat: 42.7941, lon: -96.1653 }
+      - { name: "Sioux City",     postal_code: "51101", lat: 42.4963, lon: -96.4049 }
+      - { name: "Onawa",          postal_code: "51040", lat: 42.0266, lon: -96.0969 }
+      - { name: "Council Bluffs", postal_code: "51501", lat: 41.2619, lon: -95.8608 }
+      - { name: "Omaha NE",       postal_code: "68102", lat: 41.2565, lon: -95.9345 }
+
+# NOTE ON assumed_resale_price
+# --------------------------------------------------------------------------
+# These are PLACEHOLDERS you must replace with your own numbers. They are not
+# researched values and they are not sold comps. The scanner does arithmetic
+# on whatever you put here - garbage in, confident-looking garbage out.
+#
+# Until you have Marketplace Insights access, set each one from Terapeak
+# SOLD/COMPLETED listings (not active listings), then haircut it ~15% for
+# condition risk. Re-check `flipscout stats` after ~20 real sales and adjust.
+
+searches:
+  # =====================================================================
+  # THE TRUCK EDGE: things most flippers physically cannot buy.
+  # Local-pickup-only listings are priced for whoever can drive to them,
+  # which is a tiny pool. That discount is the whole opportunity.
+  # =====================================================================
+
+  - name: tools-local-pickup
+    assumed_resale_price: 700   # PLACEHOLDER - replace with sold-comp research
+    q: "table saw"
+    local_pickup_only: true
+    max_price: 300
+    min_multiple: 3
+    bulk: large
+    routes: [sioux-city-us20, sioux-city-us30]
+    notes: "Cabinet saws are heavy, ship terribly, and hold value."
+
+  - name: commercial-kitchen
+    assumed_resale_price: 1200   # PLACEHOLDER - replace with sold-comp research
+    q: "commercial restaurant equipment"
+    local_pickup_only: true
+    max_price: 500
+    min_multiple: 4
+    bulk: large
+    routes: [sioux-city-us20, sioux-city-us30]
+    notes: "Small-town restaurant closures. Rarely shipped, often near-free."
+
+  - name: generators
+    assumed_resale_price: 900   # PLACEHOLDER - replace with sold-comp research
+    q: "generator"
+    local_pickup_only: true
+    max_price: 400
+    min_multiple: 3
+    bulk: medium
+    routes: [sioux-city-us20, sioux-city-us30]
+
+  - name: exercise-equipment
+    assumed_resale_price: 600   # PLACEHOLDER - replace with sold-comp research
+    q: "power rack squat rack"
+    local_pickup_only: true
+    max_price: 250
+    min_multiple: 3
+    bulk: large
+    routes: [sioux-city-us20, sioux-city-us30]
+    notes: "January buys, resold in bulk. Nobody wants to move these."
+
+  # =====================================================================
+  # HIGH VALUE PER CUBIC FOOT: worth a dedicated trip anywhere in Iowa.
+  # Tighter multiple because the drive is not free.
+  # =====================================================================
+
+  - name: vintage-audio
+    assumed_resale_price: 450   # PLACEHOLDER - replace with sold-comp research
+    q: "vintage receiver marantz pioneer"
+    max_price: 200
+    min_multiple: 5
+    bulk: small
+    routes: [iowa-statewide]
+
+  - name: pyrex
+    assumed_resale_price: 120   # PLACEHOLDER - replace with sold-comp research
+    q: "vintage pyrex"
+    condition: USED_GOOD
+    max_price: 40
+    min_multiple: 5
+    bulk: small
+    routes: [iowa-statewide]
+
+  # =====================================================================
+  # TRI-STATE: run these the day you are already in Sioux City.
+  # =====================================================================
+
+  - name: sioux-city-tools
+    assumed_resale_price: 800   # PLACEHOLDER - replace with sold-comp research
+    q: "dewalt milwaukee tool lot"
+    local_pickup_only: true
+    max_price: 300
+    min_multiple: 3
+    bulk: medium
+    routes: [sioux-city-metros]

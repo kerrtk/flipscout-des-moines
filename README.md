@@ -63,6 +63,112 @@ shipping, and repairs land (there is a test asserting exactly that).
 
 ---
 
+## The daily scan
+
+Beyond the HTTP API there is a CLI built for a cron job: it runs your saved
+searches, filters by how far each find is from a route you already drive,
+remembers what it has shown you, and ranks by **net profit per mile**.
+
+```bash
+flipscout check     # validate watchlist.yaml, no network calls
+flipscout scan      # run every enabled search, print a ranked report
+flipscout stats     # database counts + estimator calibration
+```
+
+Run them as `python -m app.cli <command>` without installing an entry point.
+
+### Why distance is priced in
+
+Two identical listings at the same price are not the same deal. One sits on a
+route you already drive; the other is 100 miles the wrong way. The scanner
+charges the difference:
+
+- **On-route detour** — marginal fuel only, round trip (you have to come back).
+- **Dedicated trip** — fuel *plus* your time, because that drive exists only
+  for this item.
+
+Ranking is `net_profit / round_trip_miles`, so a modest find 3 miles off the
+highway beats a better one 100 miles away — which is usually the correct call
+and rarely the intuitive one.
+
+Fuel defaults assume a **box truck** (10 mpg), not a car. Overstating mileage
+is how a "profitable" 200-mile round trip quietly loses money.
+
+### The truck edge
+
+`local_pickup_only: true` searches inventory that **cannot be shipped**. That
+inventory is priced for whoever can drive to it, which is a small pool — and
+that discount is the entire opportunity. Cabinet saws, restaurant equipment,
+power racks, generators: heavy, awkward, and cheap precisely because most
+buyers are shut out.
+
+eBay's pickup filter is a single postal code plus a radius, so a corridor is
+searched as **several overlapping circles** — one API call per waypoint. A
+7-stop route is 7 calls per search. Budget accordingly: Browse allows roughly
+5,000 calls/day on a standard keyset.
+
+### Routes
+
+`watchlist.yaml` defines routes as ordered waypoints. Distance is measured
+perpendicular to the **path**, not as a radius around home — a circle around
+Des Moines would miss the whole corridor and wrongly include towns the wrong
+direction.
+
+```yaml
+routes:
+  - name: sioux-city-us20
+    max_detour_miles: 35
+    cadence_days: 14
+    waypoints:
+      - { name: "Des Moines", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
+      - { name: "Fort Dodge", postal_code: "50501", lat: 42.4975, lon: -94.1680 }
+      - { name: "Sioux City", postal_code: "51101", lat: 42.4963, lon: -96.4049 }
+```
+
+Ships with four: two Des Moines→Sioux City variants (US-20 via Fort Dodge,
+US-30 via Carroll), an Iowa-statewide net, and a tri-state set for the day
+you are parked in Sioux City with Sioux Falls and Omaha within 90 minutes.
+
+### Memory
+
+`flipscout.db` (SQLite, stdlib) holds three tables:
+
+| Table | Purpose |
+| --- | --- |
+| `seen_items` | Dedup, so a daily report shows only what is genuinely new |
+| `verdicts` | Items you rejected, which never resurface |
+| `outcomes` | What you actually paid and actually sold for |
+
+`outcomes` is the important one. `flipscout stats` compares predicted resale
+against realised resale and reports the median ratio: **below 1.0 means your
+estimates are optimistic and should be haircut by that factor.** After ~20
+closed sales this turns the tool from a guess into something calibrated.
+
+Money is stored as `TEXT`, not `REAL` — SQLite's `REAL` is a binary float,
+which is exactly what `Decimal` exists to avoid.
+
+### Scheduling
+
+```cron
+# 6am and 6pm daily
+0 6,18 * * * cd /path/to/flipscout && .venv/bin/python -m app.cli scan >> scan.log 2>&1
+```
+
+A once-a-day scan will **not** win underpriced Buy It Now listings — those are
+taken within minutes by continuous scanners. What it does catch is local-pickup
+inventory, which moves far slower because the buyer pool is small. That is the
+niche this tool is built for.
+
+### Still the same caveat
+
+Every price in the report is an **asking price**, and every resale figure comes
+from `assumed_resale_price` in your watchlist — a number you typed. The report
+says so at the bottom of every run, deliberately. Set those figures from
+Terapeak **sold/completed** listings, not active ones, and haircut for
+condition risk. See the sold-comparables warning above.
+
+---
+
 ## Requirements
 
 - Python **3.11+**

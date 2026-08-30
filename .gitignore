@@ -27,3 +27,8 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+# Local scan state and personal watchlist
+*.db
+*.db-wal
+*.db-shm
+watchlist.yaml

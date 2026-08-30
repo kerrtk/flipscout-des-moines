@@ -264,8 +264,17 @@ class EbayClient:
         condition: str | None = None,
         max_price: object | None = None,
         currency: str = "USD",
+        local_pickup_only: bool = False,
+        pickup_postal_code: str | None = None,
+        pickup_radius_miles: int | None = None,
+        pickup_country: str = "US",
     ) -> dict[str, str]:
         """Validate caller input and build documented Browse query parameters.
+
+        Local pickup: eBay's pickup filter takes a single postal code plus a
+        radius, so a travel corridor must be searched as several overlapping
+        circles - one call per anchor - rather than one query. The scanner
+        handles that fan-out; this method builds one circle.
 
         Raises:
             InvalidSearchRequest: if any input is out of range. Validation
@@ -287,7 +296,30 @@ class EbayClient:
 
         # buyingOptions asks eBay for both fixed-price and auction inventory.
         # The {A|B} syntax is eBay's documented multi-value filter form.
+        # A pickup search narrows by location rather than buying option: the
+        # inventory that cannot be shipped is exactly what a truck monetizes.
         filters = ["buyingOptions:{FIXED_PRICE|AUCTION}"]
+
+        if local_pickup_only or pickup_postal_code:
+            if not pickup_postal_code:
+                raise InvalidSearchRequest(
+                    "pickup_postal_code is required for a local-pickup search."
+                )
+            postal = str(pickup_postal_code).strip()
+            if not postal or len(postal) > 12:
+                raise InvalidSearchRequest("pickup_postal_code is not a valid code.")
+            # `or 25` would silently turn an explicit, invalid 0 into a
+            # 25-mile default; only an omitted value gets the default.
+            radius = int(25 if pickup_radius_miles is None else pickup_radius_miles)
+            if not 1 <= radius <= 500:
+                raise InvalidSearchRequest(
+                    "pickup_radius_miles must be between 1 and 500."
+                )
+            # eBay requires all four pickup filter parts together.
+            filters.append(f"pickupCountry:{pickup_country}")
+            filters.append(f"pickupPostalCode:{postal}")
+            filters.append(f"pickupRadius:{radius}")
+            filters.append("pickupRadiusUnit:mi")
 
         if condition:
             filters.append(f"conditions:{{{condition}}}")
@@ -318,6 +350,9 @@ class EbayClient:
         offset: int = 0,
         condition: str | None = None,
         max_price: object | None = None,
+        local_pickup_only: bool = False,
+        pickup_postal_code: str | None = None,
+        pickup_radius_miles: int | None = None,
     ) -> dict[str, Any]:
         """Run a Browse ``item_summary/search`` and return the parsed JSON body.
 
@@ -332,6 +367,9 @@ class EbayClient:
             offset=offset,
             condition=condition,
             max_price=max_price,
+            local_pickup_only=local_pickup_only,
+            pickup_postal_code=pickup_postal_code,
+            pickup_radius_miles=pickup_radius_miles,
         )
 
         payload = self._get_json(
