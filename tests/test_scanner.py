@@ -930,7 +930,8 @@ def test_consumer_medical_searches_ship_disabled() -> None:
     """Medical is a bonus lane, not the model - opt in deliberately."""
     watchlist = load_watchlist(EXAMPLE_WATCHLIST)
     medical = [
-        s for s in watchlist.searches
+        s
+        for s in watchlist.searches
         if any(k in f"{s.name} {s.q}".lower() for k in ("tens", "ems", "mobility"))
     ]
     assert medical, "expected the bonus medical lane to exist"
@@ -943,7 +944,8 @@ def test_core_categories_dominate_the_enabled_set() -> None:
     active = watchlist.active_searches()
     assert len(active) >= 8
     medical_active = [
-        s for s in active
+        s
+        for s in active
         if any(k in f"{s.name} {s.q}".lower() for k in ("tens", "ems", "mobility"))
     ]
     assert medical_active == []
