@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -67,6 +68,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Hours you can actually work before the clear-out deadline.",
     )
+
+    log_cmd = sub.add_parser(
+        "log", help="Record what you bought and what it actually sold for."
+    )
+    log_cmd.add_argument("--db", default="flipscout.db", type=Path)
+    log_sub = log_cmd.add_subparsers(dest="log_command", required=True)
+
+    buy = log_sub.add_parser("buy", help="Log a purchase.")
+    buy.add_argument("--title", required=True)
+    buy.add_argument("--price", required=True, help="What you paid.")
+    buy.add_argument("--predicted", help="What you expect to net on resale.")
+    buy.add_argument("--source", default="ebay")
+    buy.add_argument("--item-id", default=None)
+    buy.add_argument("--notes", default=None)
+
+    sell = log_sub.add_parser("sell", help="Close a purchase with the real price.")
+    sell.add_argument("--id", required=True, type=int, help="Id from `log buy`.")
+    sell.add_argument("--price", required=True, help="What it actually sold for.")
+    sell.add_argument("--fees", default=None, help="Marketplace + payment fees.")
+    sell.add_argument("--costs", default=None, help="Shipping, parts, everything else.")
+    sell.add_argument("--notes", default=None)
+
+    log_list = log_sub.add_parser("list", help="Show logged buys.")
+    log_list.add_argument("--open", action="store_true", help="Unsold only.")
 
     stats = sub.add_parser("stats", help="Show database counts and calibration.")
     stats.add_argument("--db", default="flipscout.db", type=Path)
@@ -173,6 +198,64 @@ def cmd_storage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_log(args: argparse.Namespace) -> int:
+    """Record real purchases and sales - the data that calibrates everything."""
+    with Storage(args.db) as storage:
+        if args.log_command == "buy":
+            outcome_id = storage.record_outcome(
+                source=args.source,
+                source_item_id=args.item_id,
+                title=args.title,
+                purchase_price=Decimal(args.price),
+                predicted_resale=(Decimal(args.predicted) if args.predicted else None),
+                bought_at=datetime.now(UTC).isoformat(),
+                notes=args.notes,
+            )
+            print(f"Logged buy #{outcome_id}: {args.title} at ${args.price}")
+            print(
+                f"When it sells:  python -m app.cli log sell --id {outcome_id} "
+                f"--price <amount> --fees <amount>"
+            )
+            return 0
+
+        if args.log_command == "sell":
+            closed = storage.close_outcome(
+                args.id,
+                actual_resale=Decimal(args.price),
+                total_fees=Decimal(args.fees) if args.fees else None,
+                total_other_costs=Decimal(args.costs) if args.costs else None,
+                notes=args.notes,
+            )
+            if not closed:
+                print(f"No logged buy with id {args.id}.", file=sys.stderr)
+                return 2
+            print(f"Closed #{args.id} at ${args.price}.")
+            report = storage.calibration_report()
+            if report["median_ratio"] is not None:
+                print(
+                    f"Calibration now {report['median_ratio']:.3f} over "
+                    f"{report['samples']} sale(s). {report['advice']}"
+                )
+            return 0
+
+        rows = storage.list_outcomes(open_only=args.open)
+        if not rows:
+            print("Nothing logged yet.")
+            return 0
+        for row in rows:
+            state = f"sold ${row['actual_resale']}" if row["actual_resale"] else "OPEN"
+            predicted = (
+                f" (predicted ${row['predicted_resale']})"
+                if row["predicted_resale"]
+                else ""
+            )
+            print(
+                f"  #{row['id']:<4} {row['title'] or '(untitled)'} - "
+                f"paid ${row['purchase_price']} - {state}{predicted}"
+            )
+        return 0
+
+
 def cmd_stats(args: argparse.Namespace) -> int:
     with Storage(args.db) as storage:
         print(f"Database: {args.db}")
@@ -226,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_stats(args)
         if args.command == "storage":
             return cmd_storage(args)
+        if args.command == "log":
+            return cmd_log(args)
     except WatchlistError as exc:
         print(f"Watchlist error: {exc}", file=sys.stderr)
         return 2

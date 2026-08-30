@@ -139,10 +139,23 @@ you are parked in Sioux City with Sioux Falls and Omaha within 90 minutes.
 | `verdicts` | Items you rejected, which never resurface |
 | `outcomes` | What you actually paid and actually sold for |
 
-`outcomes` is the important one. `flipscout stats` compares predicted resale
-against realised resale and reports the median ratio: **below 1.0 means your
-estimates are optimistic and should be haircut by that factor.** After ~20
-closed sales this turns the tool from a guess into something calibrated.
+`outcomes` is the important one. Log every buy and every sale:
+
+```bash
+python -m app.cli log buy  --title "ReBuilder 2407" --price 10 --predicted 400
+python -m app.cli log list --open
+python -m app.cli log sell --id 1 --price 285 --fees 38 --costs 12
+```
+
+`flipscout stats` then compares predicted resale against realised resale and
+reports the median ratio: **below 1.0 means your estimates are optimistic and
+should be haircut by that factor.** One sale already tells you something — a
+$400 prediction that fetched $285 is a 0.71 ratio — and after ~20 closed sales
+this turns the tool from a guess into something calibrated.
+
+**This is the only part of the system that produces data nobody else has.**
+Everything upstream is arithmetic on assumptions; the outcomes table is
+measured fact about what things actually fetch in Iowa.
 
 Money is stored as `TEXT`, not `REAL` — SQLite's `REAL` is a binary float,
 which is exactly what `Decimal` exists to avoid.

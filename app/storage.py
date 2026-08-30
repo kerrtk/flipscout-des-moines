@@ -227,6 +227,48 @@ class Storage:
             )
         return int(cursor.lastrowid or 0)
 
+    def close_outcome(
+        self,
+        outcome_id: int,
+        *,
+        actual_resale: Decimal,
+        total_fees: Decimal | None = None,
+        total_other_costs: Decimal | None = None,
+        sold_at: str | None = None,
+        notes: str | None = None,
+    ) -> bool:
+        """Record what an item actually sold for. Returns False if unknown id."""
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE outcomes SET
+                    actual_resale     = ?,
+                    total_fees        = COALESCE(?, total_fees),
+                    total_other_costs = COALESCE(?, total_other_costs),
+                    sold_at           = COALESCE(?, ?),
+                    notes             = COALESCE(?, notes)
+                WHERE id = ?
+                """,
+                (
+                    _money(actual_resale),
+                    _money(total_fees),
+                    _money(total_other_costs),
+                    sold_at,
+                    _now(),
+                    notes,
+                    outcome_id,
+                ),
+            )
+        return cursor.rowcount > 0
+
+    def list_outcomes(self, *, open_only: bool = False) -> list[dict[str, Any]]:
+        """Every logged buy, newest first. ``open_only`` hides closed sales."""
+        query = "SELECT * FROM outcomes"
+        if open_only:
+            query += " WHERE actual_resale IS NULL"
+        query += " ORDER BY id DESC"
+        return [dict(row) for row in self._connection.execute(query).fetchall()]
+
     def calibration_report(self) -> dict[str, Any]:
         """Compare predicted resale against what things actually sold for.
 

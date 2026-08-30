@@ -122,3 +122,76 @@ def test_database_persists_across_connections(tmp_path: Path) -> None:
         first.record_seen(source="ebay", source_item_id="v1|1|0")
     with Storage(path) as second:
         assert second.has_seen("ebay", "v1|1|0") is True
+
+
+# --------------------------------------------------------------------------- #
+# Closing outcomes - the loop that turns guesses into calibration
+# --------------------------------------------------------------------------- #
+
+
+def test_open_purchase_is_listed_until_it_sells(storage: Storage) -> None:
+    outcome_id = storage.record_outcome(
+        source="ebay",
+        title="ReBuilder 2407",
+        purchase_price=Decimal("10"),
+        predicted_resale=Decimal("400"),
+    )
+    assert len(storage.list_outcomes(open_only=True)) == 1
+    storage.close_outcome(outcome_id, actual_resale=Decimal("285"))
+    assert storage.list_outcomes(open_only=True) == []
+
+
+def test_closing_records_the_real_price(storage: Storage) -> None:
+    outcome_id = storage.record_outcome(
+        source="ebay",
+        purchase_price=Decimal("10"),
+        predicted_resale=Decimal("400"),
+    )
+    assert (
+        storage.close_outcome(
+            outcome_id, actual_resale=Decimal("285"), total_fees=Decimal("38")
+        )
+        is True
+    )
+    row = storage.list_outcomes()[0]
+    assert Decimal(row["actual_resale"]) == Decimal("285.00")
+    assert Decimal(row["total_fees"]) == Decimal("38.00")
+    assert row["sold_at"] is not None
+
+
+def test_closing_an_unknown_id_reports_failure(storage: Storage) -> None:
+    assert storage.close_outcome(999, actual_resale=Decimal("10")) is False
+
+
+def test_a_single_sale_immediately_calibrates(storage: Storage) -> None:
+    """Predicting $400 and getting $285 is a 0.7125 ratio - haircut future ones."""
+    outcome_id = storage.record_outcome(
+        source="ebay",
+        purchase_price=Decimal("10"),
+        predicted_resale=Decimal("400"),
+    )
+    storage.close_outcome(outcome_id, actual_resale=Decimal("285"))
+    report = storage.calibration_report()
+    assert report["samples"] == 1
+    assert report["median_ratio"] == Decimal("0.7125")
+    assert "optimistic" in report["advice"]
+
+
+def test_closing_preserves_fields_not_supplied(storage: Storage) -> None:
+    """A sell that omits fees must not wipe what was already recorded."""
+    outcome_id = storage.record_outcome(
+        source="ebay",
+        purchase_price=Decimal("10"),
+        total_fees=Decimal("5"),
+        notes="original note",
+    )
+    storage.close_outcome(outcome_id, actual_resale=Decimal("100"))
+    row = storage.list_outcomes()[0]
+    assert Decimal(row["total_fees"]) == Decimal("5")
+    assert row["notes"] == "original note"
+
+
+def test_list_outcomes_is_newest_first(storage: Storage) -> None:
+    first = storage.record_outcome(source="ebay", purchase_price=Decimal("1"))
+    second = storage.record_outcome(source="ebay", purchase_price=Decimal("2"))
+    assert [r["id"] for r in storage.list_outcomes()] == [second, first]
