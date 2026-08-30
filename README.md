@@ -193,40 +193,52 @@ report you stop reading.
 A decent find you can grab on a lunch break outranks a better one that needs a
 day you do not have.
 
-### Regulated categories
+### The repair edge: dead electronics
 
-High-multiple finds cluster in categories with compliance friction — medical
-devices especially — precisely because that friction deters casual flippers.
-That is an edge once you learn the rules and a liability if you do not. Before
-listing anything medical, verify: whether the device is prescription-only,
-what the marketplace's medical-device policy allows, and whether skin-contact
-consumables need replacing. The tool scores margin; it does not know what you
-are allowed to sell.
-
-### The technician edge: repair economics
-
-If you can diagnose and repair, "for parts / not working" listings are worth
-far more to you than to whoever else is bidding. That asymmetry is modelled
-explicitly rather than left to intuition:
+The advantage is diagnosing power supplies, boards, connectors, and battery
+packs — not any one product category. "For parts / not working" is
+near-worthless to a general buyer and ordinary-valuable to someone who can
+test it, and you are bidding against people who cannot.
 
 ```yaml
-- name: patient-monitors
-  q: "patient monitor vital signs"
+- name: dead-audio
+  q: "vintage receiver amplifier not working parts"
   condition: FOR_PARTS_OR_NOT_WORKING
-  assumed_resale_price: 600
+  assumed_resale_price: 400
   repairable: true
-  estimated_repair_cost: 90
-  repair_success_rate: 0.5     # you revive half of them
+  estimated_repair_cost: 45
+  repair_success_rate: 0.6     # you revive three in five
 ```
 
 The scanner computes an **expected value**: resale × revival odds, minus parts.
-A $600 monitor at 50% odds is worth $300 in expectation, not $600 — and the
-half you cannot fix have to be carried by the half you can.
+A $400 receiver at 60% odds is worth $240 in expectation — the two in five that
+stay dead are carried by the three that do not.
 
 `repair_success_rate` multiplies resale, so an optimistic value inflates every
 estimate in that category at once. **Start pessimistic and raise it only when
 `flipscout stats` proves you out.** A 10× multiple at 10% odds is not a 10×
-multiple, and there is a test asserting the scanner rejects exactly that case.
+multiple, and a test asserts the scanner rejects exactly that case.
+
+### Sourcing boundaries
+
+The shipped watchlist is tiered deliberately:
+
+| Tier | Role |
+| --- | --- |
+| Core | General flipping — tools, audio, glassware, appliances. The business. |
+| Truck | Local-pickup-only bulk on the Sioux City corridor. |
+| Repair | Dead electronics your bench skills read better than other bidders. |
+| Bonus | Consumer medical found incidentally. **Ships disabled.** |
+
+Institutional medical gear — infusion pumps, patient monitors, anything a
+biomed tech services on the clock — is deliberately **absent**, and a test
+enforces its absence rather than trusting a comment. Even with no written
+conflict-of-interest policy, sourcing your own employer's category is a line no
+flip margin justifies.
+
+Consumer medical from an estate sale is a different thing entirely and is fine
+— just verify prescription status and marketplace policy before listing. The
+tool scores margin; it does not know what you are allowed to sell.
 
 ### Work territory and helpers
 
@@ -263,15 +275,6 @@ Full tier precedence, best first:
 | `in_territory` | You will be near it anyway |
 | `special_trip` | A dedicated day |
 
-### Regulated categories, again
-
-High-multiple finds cluster where compliance friction deters casual flippers —
-medical devices especially. That friction is an edge if you know the rules and
-a liability if you do not. **The tool scores margin; it does not know what you
-are allowed to sell.** Prescription status, marketplace policy, and
-skin-contact consumables are human checks, every time. If your day job is in
-the same category, check your employer's conflict-of-interest policy before
-sourcing — that is a one-time question with a permanent answer.
 
 ### Still the same caveat
 

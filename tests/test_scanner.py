@@ -891,3 +891,72 @@ def test_report_shows_the_coworker_section(tmp_path: Path) -> None:
     with Storage(tmp_path / "s.db") as storage:
         report = format_report(scan(make_client(handler), watchlist, storage))
     assert "ASK A COWORKER" in report
+
+
+# --------------------------------------------------------------------------- #
+# The shipped watchlist encodes deliberate sourcing boundaries
+# --------------------------------------------------------------------------- #
+
+EXAMPLE_WATCHLIST = Path(__file__).parent.parent / "watchlist.example.yaml"
+
+#: Gear a hospital biomed tech would service on the clock. Sourcing your own
+#: employer's category is a conflict risk that no flip margin justifies, so
+#: it stays out of the shipped config - enforced here, not just commented.
+INSTITUTIONAL_MEDICAL_TERMS = (
+    "infusion pump",
+    "patient monitor",
+    "defibrillator",
+    "ventilator",
+    "anesthesia",
+    "surgical",
+    "autoclave",
+    "ekg",
+    "ecg",
+)
+
+
+def test_example_watchlist_excludes_institutional_medical_equipment() -> None:
+    watchlist = load_watchlist(EXAMPLE_WATCHLIST)
+    for search in watchlist.searches:
+        haystack = f"{search.name} {search.q}".lower()
+        for term in INSTITUTIONAL_MEDICAL_TERMS:
+            assert term not in haystack, (
+                f"search {search.name!r} targets institutional medical gear "
+                f"({term!r}); that is the operator's day-job category"
+            )
+
+
+def test_consumer_medical_searches_ship_disabled() -> None:
+    """Medical is a bonus lane, not the model - opt in deliberately."""
+    watchlist = load_watchlist(EXAMPLE_WATCHLIST)
+    medical = [
+        s for s in watchlist.searches
+        if any(k in f"{s.name} {s.q}".lower() for k in ("tens", "ems", "mobility"))
+    ]
+    assert medical, "expected the bonus medical lane to exist"
+    assert all(not s.enabled for s in medical)
+
+
+def test_core_categories_dominate_the_enabled_set() -> None:
+    """The business is general flipping; medical must not be the bulk of it."""
+    watchlist = load_watchlist(EXAMPLE_WATCHLIST)
+    active = watchlist.active_searches()
+    assert len(active) >= 8
+    medical_active = [
+        s for s in active
+        if any(k in f"{s.name} {s.q}".lower() for k in ("tens", "ems", "mobility"))
+    ]
+    assert medical_active == []
+
+
+def test_repair_searches_use_conservative_revival_odds() -> None:
+    """A shipped default above 80% would quietly inflate a whole category."""
+    watchlist = load_watchlist(EXAMPLE_WATCHLIST)
+    for search in watchlist.searches:
+        if search.repairable:
+            assert search.repair_success_rate <= Decimal("0.8"), (
+                f"{search.name} ships an optimistic revival rate"
+            )
+            assert search.estimated_repair_cost > 0, (
+                f"{search.name} is repairable but budgets nothing for parts"
+            )

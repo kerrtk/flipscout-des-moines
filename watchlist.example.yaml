@@ -141,152 +141,172 @@ routes:
 # SOLD/COMPLETED listings (not active listings), then haircut it ~15% for
 # condition risk. Re-check `flipscout stats` after ~20 real sales and adjust.
 
+# NOTE ON assumed_resale_price
+# --------------------------------------------------------------------------
+# These are PLACEHOLDERS. Replace every one with your own research. They are
+# not sold comps. The scanner does arithmetic on whatever you put here -
+# garbage in, confident-looking garbage out.
+#
+# Until Marketplace Insights access lands, set each from Terapeak SOLD /
+# COMPLETED listings (not active ones), then haircut ~15% for condition risk.
+# Re-check `flipscout stats` after ~20 real sales and adjust.
+
 searches:
   # =====================================================================
-  # THE TRUCK EDGE: things most flippers physically cannot buy.
-  # Local-pickup-only listings are priced for whoever can drive to them,
-  # which is a tiny pool. That discount is the whole opportunity.
+  # TIER 1 - THE CORE MODEL: general flipping, sourced opportunistically.
+  # This is the business. Everything below it is a bonus.
   # =====================================================================
 
-  - name: tools-local-pickup
-    assumed_resale_price: 700   # PLACEHOLDER - replace with sold-comp research
-    q: "table saw"
+  - name: power-tools
+    q: "dewalt milwaukee makita tool lot"
+    assumed_resale_price: 250        # PLACEHOLDER
+    max_price: 70
+    min_multiple: 3
+    bulk: small
+    notes: "Highest turnover category. Always sells, always local demand."
+
+  - name: vintage-audio
+    q: "vintage receiver marantz pioneer sansui"
+    assumed_resale_price: 450        # PLACEHOLDER
+    max_price: 90
+    min_multiple: 4
+    bulk: medium
+
+  - name: pyrex-glassware
+    q: "vintage pyrex"
+    condition: USED_GOOD
+    assumed_resale_price: 120        # PLACEHOLDER
+    max_price: 25
+    min_multiple: 5
+    bulk: small
+
+  - name: small-appliances
+    q: "kitchenaid stand mixer"
+    assumed_resale_price: 220        # PLACEHOLDER
+    max_price: 55
+    min_multiple: 4
+    bulk: small
+
+  # =====================================================================
+  # TIER 2 - THE TRUCK EDGE: local-pickup-only, priced for a tiny buyer
+  # pool because it cannot ship. Run these on the Sioux City corridor.
+  # =====================================================================
+
+  - name: cabinet-saws
+    q: "table saw cabinet saw"
+    assumed_resale_price: 700        # PLACEHOLDER
     local_pickup_only: true
-    max_price: 300
+    max_price: 200
     min_multiple: 3
     bulk: large
     routes: [sioux-city-us20, sioux-city-us30]
-    notes: "Cabinet saws are heavy, ship terribly, and hold value."
 
   - name: commercial-kitchen
-    assumed_resale_price: 1200   # PLACEHOLDER - replace with sold-comp research
     q: "commercial restaurant equipment"
+    assumed_resale_price: 1200       # PLACEHOLDER
     local_pickup_only: true
-    max_price: 500
+    max_price: 350
     min_multiple: 4
     bulk: large
     routes: [sioux-city-us20, sioux-city-us30]
     notes: "Small-town restaurant closures. Rarely shipped, often near-free."
 
-  - name: generators
-    assumed_resale_price: 900   # PLACEHOLDER - replace with sold-comp research
-    q: "generator"
-    local_pickup_only: true
-    max_price: 400
-    min_multiple: 3
-    bulk: medium
-    routes: [sioux-city-us20, sioux-city-us30]
-
   - name: exercise-equipment
-    assumed_resale_price: 600   # PLACEHOLDER - replace with sold-comp research
     q: "power rack squat rack"
+    assumed_resale_price: 600        # PLACEHOLDER
     local_pickup_only: true
-    max_price: 250
+    max_price: 150
     min_multiple: 3
     bulk: large
     routes: [sioux-city-us20, sioux-city-us30]
-    notes: "January buys, resold in bulk. Nobody wants to move these."
+    notes: "January buys. Nobody wants to move these, which is the point."
 
   # =====================================================================
-  # HIGH VALUE PER CUBIC FOOT: worth a dedicated trip anywhere in Iowa.
-  # Tighter multiple because the drive is not free.
-  # =====================================================================
-
-  - name: vintage-audio
-    assumed_resale_price: 450   # PLACEHOLDER - replace with sold-comp research
-    q: "vintage receiver marantz pioneer"
-    max_price: 200
-    min_multiple: 5
-    bulk: small
-    routes: [iowa-statewide]
-
-  - name: pyrex
-    assumed_resale_price: 120   # PLACEHOLDER - replace with sold-comp research
-    q: "vintage pyrex"
-    condition: USED_GOOD
-    max_price: 40
-    min_multiple: 5
-    bulk: small
-    routes: [iowa-statewide]
-
-  # =====================================================================
-  # TRI-STATE: run these the day you are already in Sioux City.
-  # =====================================================================
-
-  - name: sioux-city-tools
-    assumed_resale_price: 800   # PLACEHOLDER - replace with sold-comp research
-    q: "dewalt milwaukee tool lot"
-    local_pickup_only: true
-    max_price: 300
-    min_multiple: 3
-    bulk: medium
-    routes: [sioux-city-metros]
-
-  # =====================================================================
-  # THE TECHNICIAN EDGE: broken medical gear.
+  # TIER 3 - THE REPAIR EDGE: dead ELECTRONICS.
   #
-  # "For parts / not working" is near-worthless to a general buyer and
-  # ordinary-valuable to someone who can diagnose and fix it. You are
-  # bidding against people who cannot use what they are looking at.
+  # Your real advantage is diagnosing power supplies, boards, connectors,
+  # and battery packs - not any one product category. "For parts / not
+  # working" is near-worthless to a general buyer and ordinary-valuable
+  # to someone who can test it. None of this touches your day job.
   #
-  # repair_success_rate is the honest number that decides whether this is
-  # a business or a pile of scrap. Start pessimistic and raise it only
-  # once `flipscout stats` proves you out. It multiplies resale, so an
-  # optimistic value inflates every estimate in the category at once.
+  # repair_success_rate MULTIPLIES resale, so an optimistic number inflates
+  # the whole category at once. Start low; raise only when stats prove it.
   # =====================================================================
 
-  - name: tens-ems-units
-    q: "TENS EMS unit"
-    assumed_resale_price: 180        # PLACEHOLDER - set from sold comps
+  - name: dead-power-tools
+    q: "power tool not working parts repair"
     condition: FOR_PARTS_OR_NOT_WORKING
+    assumed_resale_price: 180        # PLACEHOLDER
+    repairable: true
+    estimated_repair_cost: 25        # usually a switch, brushes, or a pack
+    repair_success_rate: 0.7
+    max_price: 35
+    min_multiple: 3
+    bulk: small
+
+  - name: dead-audio
+    q: "vintage receiver amplifier not working parts"
+    condition: FOR_PARTS_OR_NOT_WORKING
+    assumed_resale_price: 400        # PLACEHOLDER
+    repairable: true
+    estimated_repair_cost: 45        # caps, lamps, a bad channel
+    repair_success_rate: 0.6
+    max_price: 60
+    min_multiple: 4
+    bulk: medium
+
+  - name: test-equipment
+    q: "oscilloscope multimeter bench power supply"
+    assumed_resale_price: 350        # PLACEHOLDER
+    repairable: true
+    estimated_repair_cost: 40
+    repair_success_rate: 0.7
+    max_price: 70
+    min_multiple: 3
+    bulk: small
+    notes: "Your bench skills read this category better than most bidders."
+
+  - name: battery-devices
+    q: "cordless tool battery charger lot not working"
+    condition: FOR_PARTS_OR_NOT_WORKING
+    assumed_resale_price: 150        # PLACEHOLDER
+    repairable: true
+    estimated_repair_cost: 30        # cells
+    repair_success_rate: 0.6
+    max_price: 25
+    min_multiple: 3
+    bulk: small
+
+  # =====================================================================
+  # TIER 4 - BONUS ONLY: consumer/home medical found incidentally.
+  #
+  # NOT a sourcing strategy. These are estate-sale and garage-sale finds
+  # that happen to be medical, with no connection to your employer.
+  #
+  # Institutional gear - infusion pumps, patient monitors, anything you
+  # would service on the clock - is deliberately ABSENT. Even with no
+  # written conflict policy, sourcing your employer's category is a line
+  # not worth walking for a flip. Keep it that way.
+  #
+  # Verify prescription status and marketplace policy before listing.
+  # =====================================================================
+
+  - name: home-tens-units
+    q: "TENS EMS unit"
+    enabled: false                   # turn on when you want the bonus lane
+    assumed_resale_price: 180        # PLACEHOLDER
     repairable: true
     estimated_repair_cost: 25
     repair_success_rate: 0.7
-    max_price: 40
-    min_multiple: 3
-    bulk: small
-    routes: []
-    notes: "Usually a dead battery, a bad lead, or a cracked jack."
-
-  - name: rebuilder-units
-    q: "ReBuilder Medical neuropathy"
-    assumed_resale_price: 400        # PLACEHOLDER - set from sold comps
-    repairable: true
-    estimated_repair_cost: 30
-    repair_success_rate: 0.8
-    max_price: 120
-    min_multiple: 3
-    bulk: small
-    routes: []
-    notes: "Replace electrodes before listing. Verify both outputs fire."
-
-  - name: infusion-pumps
-    q: "infusion pump"
-    assumed_resale_price: 500        # PLACEHOLDER - set from sold comps
-    condition: FOR_PARTS_OR_NOT_WORKING
-    repairable: true
-    estimated_repair_cost: 75
-    repair_success_rate: 0.5
-    max_price: 100
+    max_price: 30
     min_multiple: 4
     bulk: small
-    routes: []
+    notes: "Consumer OTC units only. Usually a dead battery or a bad lead."
 
-  - name: patient-monitors
-    q: "patient monitor vital signs"
-    assumed_resale_price: 600        # PLACEHOLDER - set from sold comps
-    condition: FOR_PARTS_OR_NOT_WORKING
-    repairable: true
-    estimated_repair_cost: 90
-    repair_success_rate: 0.5
-    max_price: 150
-    min_multiple: 4
-    bulk: medium
-    routes: []
-
-  - name: powered-wheelchairs
+  - name: mobility-equipment
     q: "power wheelchair mobility scooter"
-    assumed_resale_price: 900        # PLACEHOLDER - set from sold comps
+    enabled: false
+    assumed_resale_price: 900        # PLACEHOLDER
     local_pickup_only: true
     repairable: true
     estimated_repair_cost: 200       # batteries are most of this
