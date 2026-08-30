@@ -52,6 +52,19 @@ def cmd_check(args: argparse.Namespace) -> int:
     """Parse and validate the watchlist. Makes no network call."""
     watchlist = load_watchlist(args.watchlist)
     print(f"{args.watchlist}: OK")
+    if watchlist.service_areas:
+        print(f"\nWork territory ({len(watchlist.service_areas)}):")
+        for area in watchlist.service_areas:
+            print(f"  {area.name}: {area.radius_miles:.0f} mi around {area.center.name}")
+    if watchlist.helpers:
+        print(f"\nHelpers ({len(watchlist.helpers)}):")
+        for helper in watchlist.helpers:
+            flag = " [PLACEHOLDER]" if "PLACEHOLDER" in (helper.notes or "") else ""
+            print(
+                f"  {helper.name}: will go {helper.max_detour_miles:.0f} mi, "
+                f"favour cost ${helper.favor_cost:.0f}{flag}"
+            )
+
     print(f"\nRoutes ({len(watchlist.routes)}):")
     for route in watchlist.routes:
         miles = total_route_miles(route.waypoints)
@@ -71,6 +84,17 @@ def cmd_check(args: argparse.Namespace) -> int:
         )
         print(f"  {search.name}: {search.q!r}{pickup}")
         print(f"      {scope} | min x{search.min_multiple} | {resale}")
+        if search.repairable:
+            expected = (
+                search.assumed_resale_price * search.repair_success_rate
+                if search.assumed_resale_price
+                else None
+            )
+            print(
+                f"      REPAIR: {search.repair_success_rate:.0%} revival odds, "
+                f"${search.estimated_repair_cost} parts"
+                + (f" -> expected resale ${expected:.2f}" if expected else "")
+            )
     missing = [s.name for s in active if s.assumed_resale_price is None]
     if missing:
         print(

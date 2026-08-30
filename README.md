@@ -203,6 +203,76 @@ what the marketplace's medical-device policy allows, and whether skin-contact
 consumables need replacing. The tool scores margin; it does not know what you
 are allowed to sell.
 
+### The technician edge: repair economics
+
+If you can diagnose and repair, "for parts / not working" listings are worth
+far more to you than to whoever else is bidding. That asymmetry is modelled
+explicitly rather than left to intuition:
+
+```yaml
+- name: patient-monitors
+  q: "patient monitor vital signs"
+  condition: FOR_PARTS_OR_NOT_WORKING
+  assumed_resale_price: 600
+  repairable: true
+  estimated_repair_cost: 90
+  repair_success_rate: 0.5     # you revive half of them
+```
+
+The scanner computes an **expected value**: resale × revival odds, minus parts.
+A $600 monitor at 50% odds is worth $300 in expectation, not $600 — and the
+half you cannot fix have to be carried by the half you can.
+
+`repair_success_rate` multiplies resale, so an optimistic value inflates every
+estimate in that category at once. **Start pessimistic and raise it only when
+`flipscout stats` proves you out.** A 10× multiple at 10% odds is not a 10×
+multiple, and there is a test asserting the scanner rejects exactly that case.
+
+### Work territory and helpers
+
+Two more ways a find becomes cheap to collect:
+
+```yaml
+service_areas:
+  - name: "central-iowa"
+    radius_miles: 100
+    center: { name: "Des Moines", lat: 41.5868, lon: -93.6250 }
+
+helpers:
+  - name: "coworker-ames"
+    lat: 42.0308
+    lon: -93.6319
+    max_detour_miles: 15
+    favor_cost: 15
+```
+
+A **service area** is territory you move through routinely for work without
+planning trips into it — cheaper to collect from than raw mileage implies. A
+**helper** is someone who can collect on your behalf; the scanner charges
+`favor_cost` instead of fuel, because what you actually spend is social
+capital. Favours are finite, and pricing them at zero is how you burn goodwill
+on thin margins.
+
+Full tier precedence, best first:
+
+| Tier | Cost to you |
+| --- | --- |
+| `quick` | A short errand from a base you already sit at |
+| `helper` | A favour — no driving at all |
+| `on_route` | A detour on a drive already planned |
+| `in_territory` | You will be near it anyway |
+| `special_trip` | A dedicated day |
+
+### Regulated categories, again
+
+High-multiple finds cluster where compliance friction deters casual flippers —
+medical devices especially. That friction is an edge if you know the rules and
+a liability if you do not. **The tool scores margin; it does not know what you
+are allowed to sell.** Prescription status, marketplace policy, and
+skin-contact consumables are human checks, every time. If your day job is in
+the same category, check your employer's conflict-of-interest policy before
+sourcing — that is a one-time question with a permanent answer.
+
 ### Still the same caveat
 
 Every price in the report is an **asking price**, and every resale figure comes

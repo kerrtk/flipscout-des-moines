@@ -10,6 +10,39 @@
 # these, not from a route - it is a short round trip squeezed into time you
 # already have, not a drive you are already making.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# WORK TERRITORY. As a field technician you move through this constantly
+# without planning trips into it, so anything inside costs far less to
+# collect than raw mileage suggests.
+# ---------------------------------------------------------------------------
+service_areas:
+  - name: "central-iowa"
+    radius_miles: 100
+    center: { name: "Des Moines", lat: 41.5868, lon: -93.6250 }
+    notes: "Covers Ames, Fort Dodge, Marshalltown, Newton, Carroll, Osceola."
+
+# ---------------------------------------------------------------------------
+# COWORKERS who can collect for you. A teammate passing a listing on their
+# commute turns a 60-mile round trip into a favour.
+#
+# favor_cost is what you book against the deal for asking. Favours are finite;
+# pricing them at zero is how you burn goodwill on $12 margins.
+# Replace these with real people and real locations.
+# ---------------------------------------------------------------------------
+helpers:
+  - name: "coworker-ames"
+    lat: 42.0308
+    lon: -93.6319
+    max_detour_miles: 15
+    favor_cost: 15
+    notes: "PLACEHOLDER - replace with a real teammate"
+  - name: "coworker-fort-dodge"
+    lat: 42.4975
+    lon: -94.1680
+    max_detour_miles: 15
+    favor_cost: 15
+    notes: "PLACEHOLDER - replace with a real teammate"
+
 bases:
   - { name: "home", postal_code: "50309", lat: 41.5868, lon: -93.6250 }
   # Replace with your actual work location - this drives the whole quick tier.
@@ -188,3 +221,77 @@ searches:
     min_multiple: 3
     bulk: medium
     routes: [sioux-city-metros]
+
+  # =====================================================================
+  # THE TECHNICIAN EDGE: broken medical gear.
+  #
+  # "For parts / not working" is near-worthless to a general buyer and
+  # ordinary-valuable to someone who can diagnose and fix it. You are
+  # bidding against people who cannot use what they are looking at.
+  #
+  # repair_success_rate is the honest number that decides whether this is
+  # a business or a pile of scrap. Start pessimistic and raise it only
+  # once `flipscout stats` proves you out. It multiplies resale, so an
+  # optimistic value inflates every estimate in the category at once.
+  # =====================================================================
+
+  - name: tens-ems-units
+    q: "TENS EMS unit"
+    assumed_resale_price: 180        # PLACEHOLDER - set from sold comps
+    condition: FOR_PARTS_OR_NOT_WORKING
+    repairable: true
+    estimated_repair_cost: 25
+    repair_success_rate: 0.7
+    max_price: 40
+    min_multiple: 3
+    bulk: small
+    routes: []
+    notes: "Usually a dead battery, a bad lead, or a cracked jack."
+
+  - name: rebuilder-units
+    q: "ReBuilder Medical neuropathy"
+    assumed_resale_price: 400        # PLACEHOLDER - set from sold comps
+    repairable: true
+    estimated_repair_cost: 30
+    repair_success_rate: 0.8
+    max_price: 120
+    min_multiple: 3
+    bulk: small
+    routes: []
+    notes: "Replace electrodes before listing. Verify both outputs fire."
+
+  - name: infusion-pumps
+    q: "infusion pump"
+    assumed_resale_price: 500        # PLACEHOLDER - set from sold comps
+    condition: FOR_PARTS_OR_NOT_WORKING
+    repairable: true
+    estimated_repair_cost: 75
+    repair_success_rate: 0.5
+    max_price: 100
+    min_multiple: 4
+    bulk: small
+    routes: []
+
+  - name: patient-monitors
+    q: "patient monitor vital signs"
+    assumed_resale_price: 600        # PLACEHOLDER - set from sold comps
+    condition: FOR_PARTS_OR_NOT_WORKING
+    repairable: true
+    estimated_repair_cost: 90
+    repair_success_rate: 0.5
+    max_price: 150
+    min_multiple: 4
+    bulk: medium
+    routes: []
+
+  - name: powered-wheelchairs
+    q: "power wheelchair mobility scooter"
+    assumed_resale_price: 900        # PLACEHOLDER - set from sold comps
+    local_pickup_only: true
+    repairable: true
+    estimated_repair_cost: 200       # batteries are most of this
+    repair_success_rate: 0.75
+    max_price: 250
+    min_multiple: 3
+    bulk: large
+    notes: "Almost always dead batteries. Heavy - the truck matters here."

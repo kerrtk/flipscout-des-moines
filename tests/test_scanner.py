@@ -677,3 +677,217 @@ def test_quick_grab_does_not_also_claim_to_be_on_a_route(tmp_path: Path) -> None
     reasons = result.candidates[0].reasons
     assert any("quick grab from home" in r for r in reasons)
     assert "on a trip you already make" not in reasons
+
+
+# --------------------------------------------------------------------------- #
+# Technician edge: repair economics, helpers, and work territory
+# --------------------------------------------------------------------------- #
+
+from app.services.geo import Helper, ServiceArea  # noqa: E402
+from app.services.scanner import PICKUP_TIER_RANK  # noqa: E402
+
+AMES_HELPER = Helper(
+    name="coworker-ames", lat=42.0308, lon=-93.6319, max_detour_miles=15, favor_cost=15
+)
+CENTRAL_IOWA = ServiceArea(
+    name="central-iowa",
+    center=Waypoint(name="Des Moines", lat=41.5868, lon=-93.6250),
+    radius_miles=100,
+)
+
+
+def test_service_area_covers_ames_but_not_cedar_rapids() -> None:
+    """100 miles from Des Moines reaches Ames (~31mi), not Cedar Rapids (~105)."""
+    assert CENTRAL_IOWA.contains((42.0308, -93.6319)) is True
+    assert CENTRAL_IOWA.contains((41.9779, -91.6656)) is False
+
+
+def test_helper_collects_only_within_their_own_tolerance() -> None:
+    assert AMES_HELPER.can_collect((42.05, -93.65)) is True
+    assert AMES_HELPER.can_collect((41.5868, -93.6250)) is False
+
+
+def test_helper_tier_outranks_a_route_detour() -> None:
+    """No driving at all beats a short drive."""
+    listing = normalize_ebay_item(make_item("a", "50", 42.0308, -93.6319))
+    tier, name, _miles = classify_pickup(
+        listing,
+        bases=[],
+        availability=Availability(max_pickup_minutes=10),
+        on_planned_route=True,
+        helpers=[AMES_HELPER],
+    )
+    assert tier == "helper"
+    assert name == "coworker-ames"
+
+
+def test_territory_tier_catches_what_routes_miss() -> None:
+    """Marshalltown is nowhere near the Sioux City run but is in territory."""
+    listing = normalize_ebay_item(make_item("b", "50", 42.0494, -92.9080))
+    tier, name, _miles = classify_pickup(
+        listing,
+        bases=[],
+        availability=Availability(max_pickup_minutes=10),
+        on_planned_route=False,
+        service_areas=[CENTRAL_IOWA],
+    )
+    assert tier == "in_territory"
+    assert name == "central-iowa"
+
+
+def test_outside_territory_still_needs_a_special_trip() -> None:
+    listing = normalize_ebay_item(make_item("c", "50", 41.9779, -91.6656))
+    tier, _n, _m = classify_pickup(
+        listing,
+        bases=[],
+        availability=Availability(max_pickup_minutes=10),
+        on_planned_route=False,
+        service_areas=[CENTRAL_IOWA],
+    )
+    assert tier == "special_trip"
+
+
+def test_tier_precedence_is_quick_helper_route_territory() -> None:
+    assert (
+        PICKUP_TIER_RANK["quick"]
+        < PICKUP_TIER_RANK["helper"]
+        < PICKUP_TIER_RANK["on_route"]
+        < PICKUP_TIER_RANK["in_territory"]
+        < PICKUP_TIER_RANK["special_trip"]
+    )
+
+
+def test_repair_odds_reduce_effective_resale() -> None:
+    """At 50% revival odds a $400 unit is worth $200 in expectation."""
+    listing = normalize_ebay_item(make_item("a", "40", 41.60, -93.65))
+    certain = base_search(assumed_resale_price=Decimal("400"))
+    risky = base_search(
+        assumed_resale_price=Decimal("400"),
+        repairable=True,
+        repair_success_rate=Decimal("0.5"),
+        estimated_repair_cost=Decimal("0"),
+    )
+    est_certain, _s1, _c1, _r1 = score_candidate(
+        listing,
+        certain,
+        detour_miles=1.0,
+        economics=TripEconomics(),
+        on_planned_route=True,
+    )
+    est_risky, _s2, _c2, reasons = score_candidate(
+        listing,
+        risky,
+        detour_miles=1.0,
+        economics=TripEconomics(),
+        on_planned_route=True,
+    )
+    assert est_certain is not None and est_risky is not None
+    assert est_risky.resale_price == Decimal("200.00")
+    assert est_risky.net_profit < est_certain.net_profit
+    assert any("50% revival odds" in r for r in reasons)
+
+
+def test_repair_cost_is_charged_against_the_deal() -> None:
+    listing = normalize_ebay_item(make_item("a", "40", 41.60, -93.65))
+    search = base_search(
+        assumed_resale_price=Decimal("400"),
+        repairable=True,
+        repair_success_rate=Decimal("1"),
+        estimated_repair_cost=Decimal("75"),
+    )
+    estimate, _s, _c, _r = score_candidate(
+        listing,
+        search,
+        detour_miles=1.0,
+        economics=TripEconomics(),
+        on_planned_route=True,
+    )
+    assert estimate is not None
+    assert estimate.total_other_costs >= Decimal("75")
+
+
+def test_a_bad_repair_rate_can_disqualify_an_otherwise_good_multiple() -> None:
+    """$40 into a $400 unit is 10x - but not at 10% revival odds."""
+    listing = normalize_ebay_item(make_item("a", "40", 41.60, -93.65))
+    search = base_search(
+        assumed_resale_price=Decimal("400"),
+        min_multiple=Decimal("3"),
+        repairable=True,
+        repair_success_rate=Decimal("0.1"),
+        estimated_repair_cost=Decimal("50"),
+    )
+    _est, score, _c, reasons = score_candidate(
+        listing,
+        search,
+        detour_miles=1.0,
+        economics=TripEconomics(),
+        on_planned_route=True,
+    )
+    assert score == 0
+    assert any("below min_multiple" in r for r in reasons)
+
+
+def test_non_repairable_search_is_unaffected_by_repair_fields() -> None:
+    listing = normalize_ebay_item(make_item("a", "40", 41.60, -93.65))
+    estimate, _s, _c, reasons = score_candidate(
+        listing,
+        base_search(assumed_resale_price=Decimal("400")),
+        detour_miles=1.0,
+        economics=TripEconomics(),
+        on_planned_route=True,
+    )
+    assert estimate is not None
+    assert estimate.resale_price == Decimal("400.00")
+    assert not any("revival odds" in r for r in reasons)
+
+
+@pytest.mark.parametrize("rate", [Decimal("0"), Decimal("1.5"), Decimal("-0.2")])
+def test_impossible_repair_rates_are_rejected(rate) -> None:
+    with pytest.raises(ValueError):
+        base_search(repairable=True, repair_success_rate=rate)
+
+
+def test_helper_pickup_costs_a_favour_not_mileage(tmp_path: Path) -> None:
+    """Asking a coworker costs goodwill; it must not be free, nor be fuel."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return token_response()
+        return httpx.Response(
+            200,
+            json={"itemSummaries": [make_item("v1|a|0", "50", 42.0308, -93.6319)]},
+        )
+
+    watchlist = Watchlist(
+        routes=[CORRIDOR],
+        helpers=[AMES_HELPER],
+        availability=Availability(max_pickup_minutes=10),
+        searches=[base_search()],
+    )
+    with Storage(tmp_path / "s.db") as storage:
+        result = scan(make_client(handler), watchlist, storage)
+
+    candidate = result.candidates[0]
+    assert candidate.pickup_tier == "helper"
+    assert candidate.drive_cost == Decimal("15.00")
+    assert any("coworker can collect" in r for r in candidate.reasons)
+
+
+def test_report_shows_the_coworker_section(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return token_response()
+        return httpx.Response(
+            200,
+            json={"itemSummaries": [make_item("v1|a|0", "50", 42.0308, -93.6319)]},
+        )
+
+    watchlist = Watchlist(
+        routes=[CORRIDOR],
+        helpers=[AMES_HELPER],
+        availability=Availability(max_pickup_minutes=10),
+        searches=[base_search()],
+    )
+    with Storage(tmp_path / "s.db") as storage:
+        report = format_report(scan(make_client(handler), watchlist, storage))
+    assert "ASK A COWORKER" in report

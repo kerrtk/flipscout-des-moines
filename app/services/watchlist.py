@@ -15,7 +15,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models import EbayItemCondition
-from app.services.geo import Base, Route
+from app.services.geo import Base, Helper, Route, ServiceArea
 
 DEFAULT_WATCHLIST_PATH = Path("watchlist.yaml")
 
@@ -51,6 +51,24 @@ class SavedSearch(BaseModel):
     #: Rough resale estimate, used only until sold-comps data is wired in.
     #: See services.profitability - an asking price is NOT a resale price.
     assumed_resale_price: Decimal | None = Field(default=None, gt=0)
+
+    # ---- Repair economics -------------------------------------------- #
+    # The technician edge. A device listed "for parts / not working" is close
+    # to worthless to a general buyer and ordinary-valuable to someone who can
+    # diagnose and fix it. That asymmetry is the whole opportunity, so it is
+    # modelled explicitly instead of being left as intuition.
+
+    #: True when you can realistically repair failures in this category.
+    repairable: bool = False
+
+    #: Typical parts + bench cost to bring a dead unit back.
+    estimated_repair_cost: Decimal = Field(default=Decimal("0"), ge=0)
+
+    #: Share of dead units you actually revive. Be honest: this is the number
+    #: that decides whether the category is a business or a pile of scrap.
+    #: The scanner multiplies resale by it, so an optimistic value here
+    #: inflates every estimate in the category at once.
+    repair_success_rate: Decimal = Field(default=Decimal("1"), gt=0, le=1)
 
     #: Estimated weight/bulk class, for truck-capacity planning.
     bulk: str | None = Field(default=None, pattern="^(small|medium|large|pallet)$")
@@ -114,6 +132,8 @@ class Watchlist(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     routes: list[Route] = Field(default_factory=list)
+    service_areas: list[ServiceArea] = Field(default_factory=list)
+    helpers: list[Helper] = Field(default_factory=list)
     bases: list[Base] = Field(default_factory=list)
     availability: Availability = Field(default_factory=Availability)
     searches: list[SavedSearch] = Field(default_factory=list)

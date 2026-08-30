@@ -21,7 +21,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import NormalizedListing, ProfitAssumptions, ProfitEstimate
 from app.services.ebay_client import EbayClient, EbayError, InvalidSearchRequest
-from app.services.geo import Base, Route, Waypoint, nearest_base
+from app.services.geo import (
+    Base,
+    Helper,
+    Route,
+    ServiceArea,
+    Waypoint,
+    nearest_base,
+    nearest_helper,
+)
 from app.services.normalization import normalize_ebay_search_response
 from app.services.profitability import estimate_profit
 from app.services.watchlist import Availability, SavedSearch, Watchlist
@@ -123,7 +131,13 @@ def locate(
 #: Ordering for the report. A thing you can grab on a lunch break outranks a
 #: better thing that needs a Saturday, because the Saturday one competes with
 #: everything else you could do with a Saturday.
-PICKUP_TIER_RANK = {"quick": 0, "on_route": 1, "special_trip": 2}
+PICKUP_TIER_RANK = {
+    "quick": 0,  # short errand from a base you already sit at
+    "helper": 1,  # a coworker can collect it; costs a favour, not a drive
+    "on_route": 2,  # a detour on a drive already planned
+    "in_territory": 3,  # inside a service area you cover for work anyway
+    "special_trip": 4,  # none of the above; must justify a dedicated day
+}
 
 
 def classify_pickup(
@@ -132,6 +146,8 @@ def classify_pickup(
     bases: list[Base],
     availability: Availability,
     on_planned_route: bool,
+    helpers: list[Helper] | None = None,
+    service_areas: list[ServiceArea] | None = None,
 ) -> tuple[str, str | None, float | None]:
     """Decide how a find would actually be collected.
 
@@ -139,8 +155,12 @@ def classify_pickup(
 
     - ``quick``        - inside the round-trip budget from a base you already
                          sit at during the week. Grabbable on a lunch break.
+    - ``helper``       - a coworker is close enough to collect it for you.
+                         Costs a favour rather than a drive.
     - ``on_route``     - a detour on a drive you already make.
-    - ``special_trip`` - neither. It has to be worth burning a Saturday.
+    - ``in_territory`` - inside a service area you already cover for work, so
+                         you will plausibly be near it soon without planning to.
+    - ``special_trip`` - none of the above. Must justify a dedicated day.
 
     The distinction matters when time, not distance, is the binding
     constraint: an hour you do not have is infinitely expensive.
@@ -150,19 +170,28 @@ def classify_pickup(
     if point is not None:
         base, miles = nearest_base(point, bases)
 
+    rounded = round(miles, 1) if miles is not None else None
+
     if miles is not None and miles <= availability.max_one_way_miles():
-        return ("quick", base.name if base else None, round(miles, 1))
+        return ("quick", base.name if base else None, rounded)
+
+    # A helper outranks a route detour: no driving at all beats a short drive.
+    if point is not None and helpers:
+        helper, helper_miles = nearest_helper(point, helpers)
+        if helper is not None:
+            return ("helper", helper.name, round(helper_miles or 0.0, 1))
+
     if on_planned_route:
-        return (
-            "on_route",
-            base.name if base else None,
-            round(miles, 1) if miles is not None else None,
-        )
-    return (
-        "special_trip",
-        base.name if base else None,
-        round(miles, 1) if miles is not None else None,
-    )
+        return ("on_route", base.name if base else None, rounded)
+
+    # Territory is the weakest positive signal: you are not going there today,
+    # but you pass through often enough that it is not a dedicated trip either.
+    if point is not None and service_areas:
+        for area in service_areas:
+            if area.contains(point):
+                return ("in_territory", area.name, rounded)
+
+    return ("special_trip", base.name if base else None, rounded)
 
 
 def score_candidate(
@@ -172,6 +201,7 @@ def score_candidate(
     detour_miles: float | None,
     economics: TripEconomics,
     on_planned_route: bool,
+    favor_cost: Decimal | None = None,
 ) -> tuple[ProfitEstimate | None, Decimal, Decimal | None, list[str]]:
     """Price the drive into the deal and produce a ranking score.
 
@@ -190,21 +220,44 @@ def score_candidate(
         reasons.append("no resale estimate set - score is placement only")
         return (None, Decimal("0"), None, reasons)
 
+    # Repair economics. A dead unit is worth (resale x odds you fix it) minus
+    # what fixing costs. This is an EXPECTED value across many units, not a
+    # promise about this one: at a 70% success rate, roughly three in ten are
+    # scrap and the winners have to carry them.
+    effective_resale = search.assumed_resale_price
+    repair_cost = Decimal("0")
+    if search.repairable:
+        effective_resale = (
+            search.assumed_resale_price * search.repair_success_rate
+        ).quantize(Decimal("0.01"))
+        repair_cost = search.estimated_repair_cost
+        reasons.append(
+            f"repair-adjusted: {search.repair_success_rate:.0%} revival odds, "
+            f"${repair_cost} parts"
+        )
+
     # Round trip: you have to come back. An on-route detour is charged as
     # marginal fuel only; a dedicated trip also costs your time.
     round_trip = Decimal(str((detour_miles or 0.0) * 2))
-    drive_cost = economics.fuel_cost_for(round_trip)
-    if not on_planned_route:
-        drive_cost += economics.time_cost_for(round_trip)
-        reasons.append("dedicated trip - time charged")
+    if favor_cost is not None:
+        # A helper collects it: you spend social capital, not fuel. Favours are
+        # finite, so they are still charged - just not as mileage.
+        drive_cost = favor_cost
+        reasons.append("a coworker can collect this")
     else:
-        reasons.append("on a trip you already make")
+        drive_cost = economics.fuel_cost_for(round_trip)
+        if not on_planned_route:
+            drive_cost += economics.time_cost_for(round_trip)
+            reasons.append("dedicated trip - time charged")
+        else:
+            reasons.append("on a trip you already make")
 
     assumptions = ProfitAssumptions(
-        resale_price=search.assumed_resale_price,
+        resale_price=effective_resale,
         purchase_price=listing.price_value,
         shipping_cost=listing.shipping_cost or Decimal("0"),
         fuel_cost=drive_cost.quantize(Decimal("0.01")),
+        repair_cost=repair_cost,
     )
     estimate = estimate_profit(assumptions)
 
@@ -308,7 +361,16 @@ def scan(
                     bases=watchlist.bases,
                     availability=watchlist.availability,
                     on_planned_route=on_route,
+                    helpers=watchlist.helpers,
+                    service_areas=watchlist.service_areas,
                 )
+                favor_cost: Decimal | None = None
+                if tier == "helper":
+                    helper = next(
+                        (h for h in watchlist.helpers if h.name == base_name), None
+                    )
+                    if helper is not None:
+                        favor_cost = Decimal(str(helper.favor_cost))
                 # A quick grab from a base is charged as an on-route errand:
                 # it fits in time you are already spending near that base.
                 estimate, score, drive_cost, reasons = score_candidate(
@@ -320,7 +382,8 @@ def scan(
                         else detour
                     ),
                     economics=economics,
-                    on_planned_route=on_route or tier == "quick",
+                    on_planned_route=on_route or tier in {"quick", "in_territory"},
+                    favor_cost=favor_cost,
                 )
                 if score <= 0:
                     continue
@@ -379,7 +442,9 @@ def format_report(result: ScanResult, *, top: int = 20) -> str:
 
     headings = {
         "quick": "QUICK GRABS - reachable in your pickup window",
+        "helper": "ASK A COWORKER - someone is already close",
         "on_route": "ON ROUTE - collect on a drive you already make",
+        "in_territory": "IN YOUR WORK TERRITORY - you will be near it anyway",
         "special_trip": "WORTH A SPECIAL TRIP - only if the margin justifies a day",
     }
     current_tier: str | None = None
@@ -398,7 +463,10 @@ def format_report(result: ScanResult, *, top: int = 20) -> str:
             f"score {candidate.score}/mi"
         )
         where = candidate.nearest_stop or listing.location_text or "location unknown"
-        if candidate.pickup_tier == "quick" and candidate.base_miles is not None:
+        if candidate.pickup_tier == "helper" or (
+            candidate.pickup_tier in {"quick", "in_territory"}
+            and (candidate.base_miles is not None)
+        ):
             placement = f"{candidate.base_miles}mi from {candidate.base_name}"
         elif candidate.detour_miles is not None:
             placement = f"{candidate.detour_miles}mi off {candidate.route_name}"

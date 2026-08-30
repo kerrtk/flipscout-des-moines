@@ -176,3 +176,69 @@ def nearest_base(
         return (None, None)
     best = min(bases, key=lambda base: base.miles_to(point))
     return (best, best.miles_to(point))
+
+
+class ServiceArea(BaseModel):
+    """A radius you already cover for work.
+
+    Different from a Route: a route is a specific drive on a specific day; a
+    service area is territory you move through routinely without planning it.
+    For a field technician the whole territory is effectively "on the way",
+    so anything inside it costs far less to collect than the raw mileage
+    suggests.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    center: Waypoint
+    radius_miles: float = Field(gt=0, le=1000)
+    notes: str | None = None
+
+    def contains(self, point: tuple[float, float]) -> bool:
+        return self.miles_from_center(point) <= self.radius_miles
+
+    def miles_from_center(self, point: tuple[float, float]) -> float:
+        return haversine_miles(self.center.point, point)
+
+
+class Helper(BaseModel):
+    """Someone who can collect on your behalf.
+
+    A coworker who passes a listing on their commute converts a 60-mile round
+    trip into a favour and a coffee. The scanner charges ``favor_cost`` rather
+    than mileage, because what you actually spend is social capital, not fuel.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    #: How far this person will realistically go out of their way.
+    max_detour_miles: float = Field(default=15.0, gt=0, le=200)
+    #: What you book against a deal for asking. Keeps the tool honest about
+    #: the fact that favours are finite and not actually free.
+    favor_cost: float = Field(default=15.0, ge=0)
+    notes: str | None = None
+
+    @property
+    def point(self) -> tuple[float, float]:
+        return (self.lat, self.lon)
+
+    def can_collect(self, point: tuple[float, float]) -> bool:
+        return haversine_miles(self.point, point) <= self.max_detour_miles
+
+    def miles_to(self, point: tuple[float, float]) -> float:
+        return haversine_miles(self.point, point)
+
+
+def nearest_helper(
+    point: tuple[float, float], helpers: Sequence[Helper]
+) -> tuple[Helper | None, float | None]:
+    """The helper closest to ``point`` who could actually collect it."""
+    reachable = [h for h in helpers if h.can_collect(point)]
+    if not reachable:
+        return (None, None)
+    best = min(reachable, key=lambda h: h.miles_to(point))
+    return (best, best.miles_to(point))
