@@ -1,0 +1,53 @@
+# Storage-unit auctions you are considering.
+#
+# These platforms have NO public API, so this file is filled in by hand from
+# their own saved-search email alerts - the supported way to be notified:
+#
+#   StorageTreasures      storagetreasures.com   (largest; IA + all neighbours)
+#   Lockerfox             lockerfox.com
+#   Bid13                 bid13.com
+#   SelfStorageAuction    selfstorageauction.com
+#
+# Set up a saved search on each with a radius around Des Moines, plus the
+# metros in reach: Omaha/Council Bluffs, Kansas City, Minneapolis, Sioux Falls,
+# and the Quad Cities. Facility-run onsite auctions are still common in small
+# Iowa towns and are often posted only in the local paper or on the door.
+#
+# Then evaluate before you bid:  python -m app.cli storage
+#
+# Be pessimistic about sellable_fraction. You are bidding on a room you saw
+# from the doorway. Most of what is in it is dump weight.
+
+units:
+  - facility: "Extra Space Storage - Ankeny"
+    city: "Ankeny"
+    state: "IA"
+    unit_size: "10x20"
+    location: { name: "Ankeny", lat: 41.7317, lon: -93.6001 }
+    clearout_deadline_hours: 48
+    bid: 250
+    buyers_premium_rate: 0.15
+    sales_tax_rate: 0.07
+    cleaning_deposit: 100
+    estimated_contents_value: 2000    # if EVERYTHING sellable sold
+    sellable_fraction: 0.3            # the rest is dump weight
+    round_trip_miles: 40
+    loads_required: 2
+    disposal_cost: 120
+    labor_hours: 10
+    notes: "Photos show furniture + many sealed boxes. Boxes are a coin flip."
+
+  - facility: "U-Haul - Council Bluffs"
+    city: "Council Bluffs"
+    state: "IA"
+    unit_size: "10x10"
+    location: { name: "Council Bluffs", lat: 41.2619, lon: -95.8608 }
+    clearout_deadline_hours: 24
+    bid: 80
+    estimated_contents_value: 900
+    sellable_fraction: 0.35
+    round_trip_miles: 240
+    loads_required: 1
+    disposal_cost: 60
+    labor_hours: 6
+    notes: "24h clear-out and 120mi each way. Deadline is the real risk."

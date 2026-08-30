@@ -229,6 +229,12 @@ searches:
   # working" is near-worthless to a general buyer and ordinary-valuable
   # to someone who can test it. None of this touches your day job.
   #
+  # Repair is OUTSOURCED - you pay a tech. That means the bench fee is
+  # sunk on every unit, including the ones that turn out to be dead. The
+  # repair itself is only paid on the ones that come back. Having a
+  # reliable repair contact IS the edge: most bidders on a dead unit
+  # have nobody to call.
+  #
   # repair_success_rate MULTIPLIES resale, so an optimistic number inflates
   # the whole category at once. Start low; raise only when stats prove it.
   # =====================================================================
@@ -238,6 +244,7 @@ searches:
     condition: FOR_PARTS_OR_NOT_WORKING
     assumed_resale_price: 180        # PLACEHOLDER
     repairable: true
+    diagnosis_fee: 20              # paid even when it cannot be saved
     estimated_repair_cost: 25        # usually a switch, brushes, or a pack
     repair_success_rate: 0.7
     max_price: 35
@@ -249,6 +256,7 @@ searches:
     condition: FOR_PARTS_OR_NOT_WORKING
     assumed_resale_price: 400        # PLACEHOLDER
     repairable: true
+    diagnosis_fee: 20              # paid even when it cannot be saved
     estimated_repair_cost: 45        # caps, lamps, a bad channel
     repair_success_rate: 0.6
     max_price: 60
@@ -259,6 +267,7 @@ searches:
     q: "oscilloscope multimeter bench power supply"
     assumed_resale_price: 350        # PLACEHOLDER
     repairable: true
+    diagnosis_fee: 20              # paid even when it cannot be saved
     estimated_repair_cost: 40
     repair_success_rate: 0.7
     max_price: 70
@@ -271,6 +280,7 @@ searches:
     condition: FOR_PARTS_OR_NOT_WORKING
     assumed_resale_price: 150        # PLACEHOLDER
     repairable: true
+    diagnosis_fee: 20              # paid even when it cannot be saved
     estimated_repair_cost: 30        # cells
     repair_success_rate: 0.6
     max_price: 25
@@ -296,6 +306,7 @@ searches:
     enabled: false                   # turn on when you want the bonus lane
     assumed_resale_price: 180        # PLACEHOLDER
     repairable: true
+    diagnosis_fee: 20              # paid even when it cannot be saved
     estimated_repair_cost: 25
     repair_success_rate: 0.7
     max_price: 30
@@ -309,6 +320,7 @@ searches:
     assumed_resale_price: 900        # PLACEHOLDER
     local_pickup_only: true
     repairable: true
+    diagnosis_fee: 20              # paid even when it cannot be saved
     estimated_repair_cost: 200       # batteries are most of this
     repair_success_rate: 0.75
     max_price: 250

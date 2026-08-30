@@ -227,13 +227,20 @@ def score_candidate(
     effective_resale = search.assumed_resale_price
     repair_cost = Decimal("0")
     if search.repairable:
-        effective_resale = (
-            search.assumed_resale_price * search.repair_success_rate
+        rate = search.repair_success_rate
+        # Resale only happens on units that come back.
+        effective_resale = (search.assumed_resale_price * rate).quantize(Decimal("0.01"))
+        # The bench fee is paid on EVERY unit, including the write-offs. The
+        # repair itself is paid only on the ones that are saved. Charging the
+        # full repair cost on failures - or the diagnosis fee only on
+        # successes - both misprice the lane, in opposite directions.
+        repair_cost = (
+            search.diagnosis_fee + (search.estimated_repair_cost * rate)
         ).quantize(Decimal("0.01"))
-        repair_cost = search.estimated_repair_cost
         reasons.append(
-            f"repair-adjusted: {search.repair_success_rate:.0%} revival odds, "
-            f"${repair_cost} parts"
+            f"repair-adjusted: {rate:.0%} revival odds, "
+            f"${search.diagnosis_fee} bench fee (sunk) + "
+            f"${search.estimated_repair_cost} on success"
         )
 
     # Round trip: you have to come back. An on-route detour is charged as

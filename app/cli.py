@@ -9,12 +9,20 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from decimal import Decimal
 from pathlib import Path
+
+import yaml
 
 from app.config import MissingConfigurationError, get_settings
 from app.services.ebay_client import EbayClient
 from app.services.geo import total_route_miles
 from app.services.scanner import TripEconomics, format_report, scan
+from app.services.storage_auctions import (
+    StorageUnitAuction,
+    evaluate_storage_unit,
+    format_storage_estimate,
+)
 from app.services.watchlist import WatchlistError, load_watchlist
 from app.storage import Storage
 
@@ -41,6 +49,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = sub.add_parser("check", help="Validate the watchlist without calling eBay.")
     check.add_argument("--watchlist", default="watchlist.yaml", type=Path)
+
+    storage_cmd = sub.add_parser(
+        "storage", help="Evaluate storage-unit auctions before you bid."
+    )
+    storage_cmd.add_argument("--units", default="storage-units.yaml", type=Path)
+    storage_cmd.add_argument(
+        "--cost-per-mile",
+        type=float,
+        default=0.65,
+        help="Loaded-truck cost per mile, not a car's.",
+    )
+    storage_cmd.add_argument("--hourly", type=float, default=25.0)
+    storage_cmd.add_argument(
+        "--available-hours",
+        type=float,
+        default=None,
+        help="Hours you can actually work before the clear-out deadline.",
+    )
 
     stats = sub.add_parser("stats", help="Show database counts and calibration.")
     stats.add_argument("--db", default="flipscout.db", type=Path)
@@ -104,6 +130,49 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_storage(args: argparse.Namespace) -> int:
+    """Price storage units from a YAML file. Makes no network call."""
+    path = Path(args.units)
+    if not path.is_file():
+        print(
+            f"No unit file at {path}. Copy storage-units.example.yaml to "
+            f"{path} and fill it in.",
+            file=sys.stderr,
+        )
+        return 2
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    entries = raw.get("units") or []
+    if not entries:
+        print(f"{path} lists no units.", file=sys.stderr)
+        return 2
+
+    available = (
+        Decimal(str(args.available_hours)) if args.available_hours is not None else None
+    )
+
+    worthwhile = 0
+    for entry in entries:
+        unit = StorageUnitAuction.model_validate(entry)
+        estimate = evaluate_storage_unit(
+            unit,
+            cost_per_mile=Decimal(str(args.cost_per_mile)),
+            hourly_value_of_time=Decimal(str(args.hourly)),
+            available_hours_before_deadline=available,
+        )
+        print(format_storage_estimate(estimate))
+        print("=" * 62)
+        if estimate.net_profit > 0 and estimate.clearout_feasible:
+            worthwhile += 1
+
+    print(f"\n{worthwhile} of {len(entries)} unit(s) profitable and clearable.")
+    print(
+        "Bids above the walk-away figure lose money. Take those numbers to "
+        "the auction and stop there."
+    )
+    return 0
+
+
 def cmd_stats(args: argparse.Namespace) -> int:
     with Storage(args.db) as storage:
         print(f"Database: {args.db}")
@@ -155,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_check(args)
         if args.command == "stats":
             return cmd_stats(args)
+        if args.command == "storage":
+            return cmd_storage(args)
     except WatchlistError as exc:
         print(f"Watchlist error: {exc}", file=sys.stderr)
         return 2

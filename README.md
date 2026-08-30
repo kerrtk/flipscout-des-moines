@@ -193,12 +193,16 @@ report you stop reading.
 A decent find you can grab on a lunch break outranks a better one that needs a
 day you do not have.
 
-### The repair edge: dead electronics
+### The repair lane: outsourced
 
-The advantage is diagnosing power supplies, boards, connectors, and battery
-packs — not any one product category. "For parts / not working" is
-near-worthless to a general buyer and ordinary-valuable to someone who can
-test it, and you are bidding against people who cannot.
+"For parts / not working" is near-worthless to a general buyer and
+ordinary-valuable to whoever has a repair path. **Having a tech you can call is
+itself the edge** — most bidders on a dead unit have nobody.
+
+Outsourcing changes the arithmetic in one important way: the **bench fee is
+sunk on every unit, including the ones that turn out to be dead.** Doing it
+yourself costs an evening on a failure; paying someone costs money on failures
+too. Leaving `diagnosis_fee` at 0 quietly overstates every deal in this lane.
 
 ```yaml
 - name: dead-audio
@@ -206,13 +210,16 @@ test it, and you are bidding against people who cannot.
   condition: FOR_PARTS_OR_NOT_WORKING
   assumed_resale_price: 400
   repairable: true
-  estimated_repair_cost: 45
-  repair_success_rate: 0.6     # you revive three in five
+  diagnosis_fee: 20            # paid even when it cannot be saved
+  estimated_repair_cost: 45    # paid only on the ones that come back
+  repair_success_rate: 0.6     # three in five revive
 ```
 
-The scanner computes an **expected value**: resale × revival odds, minus parts.
-A $400 receiver at 60% odds is worth $240 in expectation — the two in five that
-stay dead are carried by the three that do not.
+The scanner computes an **expected value**: resale × revival odds, minus the
+bench fee in full, minus the repair charged at the success rate. A $400
+receiver at 60% odds is worth $240 in expectation — the two in five that stay
+dead are carried by the three that do not, *and* you paid $20 to look at all
+five.
 
 `repair_success_rate` multiplies resale, so an optimistic value inflates every
 estimate in that category at once. **Start pessimistic and raise it only when
@@ -283,6 +290,95 @@ from `assumed_resale_price` in your watchlist — a number you typed. The report
 says so at the bottom of every run, deliberately. Set those figures from
 Terapeak **sold/completed** listings, not active ones, and haircut for
 condition risk. See the sold-comparables warning above.
+
+---
+
+## Storage-unit auctions
+
+A storage unit is not a listing. You bid sight-unseen on a room you may only
+look into from the doorway, you win **everything** in it including the trash,
+and you must clear it completely inside 24–72 hours.
+
+```bash
+python -m app.cli storage --available-hours 8
+```
+
+### Why people lose money on these
+
+Almost every cost that decides profitability is absent from the bid:
+
+```
+Storage unit: Extra Space Storage - Ankeny
+
+  bid                 $    250.00
+  buyer's premium     $     37.50
+  sales tax           $     20.13
+  hauling             $     52.00
+  disposal            $    120.00
+  your time           $    250.00
+  ------------------------------
+  TOTAL COST          $    729.63
+  expected revenue    $    600.00
+  NET PROFIT          $   -129.63   (-17.77% ROI)
+
+  WALK AWAY ABOVE     $    144.66
+  cash needed         $    829.63  (incl. deposit)
+```
+
+A $250 bid on a unit holding $2,000 of contents is a **$130 loss**. The two
+lines that do it are `disposal` and `your time` — a room that is 70% junk means
+you paid to haul it and then paid again to throw it away.
+
+Some units lose money **at any bid**: when hauling, disposal, and labour alone
+exceed expected revenue, the tool says so outright rather than reporting "your
+bid is too high."
+
+### Walk-away bid
+
+Every evaluation returns the highest bid that still breaks even, solved
+directly (premium and tax scale with the bid, so it is not just
+revenue − costs). **Take that number to the auction and stop there.** A test
+asserts that bidding exactly the walk-away figure lands at zero profit.
+
+`cash needed` includes the refundable cleaning deposit — it comes back, but you
+still need it on the day.
+
+### Be pessimistic about `sellable_fraction`
+
+You are bidding on a room you saw from the doorway. `sellable_fraction` above
+50% gets a warning, because most rooms are mostly dump weight. So does a
+`disposal_cost` of 0.
+
+### Where to find them
+
+**None of these platforms publish a public API**, so this module does not
+discover auctions — it prices ones you have already found. Set up saved
+searches with email alerts on each; that is the supported way to be notified,
+and scraping them would violate their terms.
+
+| Platform | Notes |
+| --- | --- |
+| [StorageTreasures](https://www.storagetreasures.com) | Largest; Iowa and every neighbouring state |
+| [Lockerfox](https://www.lockerfox.com) | |
+| [Bid13](https://www.bid13.com) | |
+| [SelfStorageAuction](https://www.selfstorageauction.com) | |
+
+Worth setting radii around Des Moines plus the metros in reach: Omaha/Council
+Bluffs, Kansas City, Minneapolis, Sioux Falls, the Quad Cities. Facility-run
+onsite auctions are still common in small Iowa towns and are often posted only
+on the door or in the local paper — those have the least competition.
+
+### The truck is the edge here
+
+The clear-out deadline is what stops most bidders: win a unit and you have a
+day or two to empty it entirely. Hauling capacity is exactly what a box truck
+solves, so you can bid on units that a bidder with an SUV has to skip.
+
+That advantage is only real if you can actually be there. Pass
+`--available-hours` with the hours you genuinely have before the deadline; the
+tool flags a unit you cannot clear rather than assuming you are free, because
+missing the window forfeits the deposit and usually your bidding rights at that
+chain.
 
 ---
 

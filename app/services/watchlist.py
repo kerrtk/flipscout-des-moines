@@ -58,10 +58,20 @@ class SavedSearch(BaseModel):
     # diagnose and fix it. That asymmetry is the whole opportunity, so it is
     # modelled explicitly instead of being left as intuition.
 
-    #: True when you can realistically repair failures in this category.
+    #: True when a repair path exists for this category - yours or, more
+    #: usually, a tech you pay. Having a reliable repair contact is itself the
+    #: edge; most bidders on a dead unit have no one to call.
     repairable: bool = False
 
-    #: Typical parts + bench cost to bring a dead unit back.
+    #: Paid to look at it AT ALL, and sunk whether or not it can be saved.
+    #: This is the line that separates outsourced repair from doing it
+    #: yourself: your own time on a dead unit costs an evening, but a bench
+    #: fee costs money on every failure, including the ones you walk away
+    #: from. Leaving it at 0 quietly overstates every repair-lane deal.
+    diagnosis_fee: Decimal = Field(default=Decimal("0"), ge=0)
+
+    #: Parts plus the tech's labour, paid only on units that actually come
+    #: back. Charged at the success rate, not in full.
     estimated_repair_cost: Decimal = Field(default=Decimal("0"), ge=0)
 
     #: Share of dead units you actually revive. Be honest: this is the number

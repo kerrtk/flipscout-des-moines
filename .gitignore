@@ -32,3 +32,4 @@ htmlcov/
 *.db-wal
 *.db-shm
 watchlist.yaml
+storage-units.yaml
